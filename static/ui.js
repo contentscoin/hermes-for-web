@@ -1,8 +1,92 @@
 const S={session:null,messages:[],entries:[],busy:false,pendingFiles:[],toolCalls:[],activeStreamId:null,currentDir:'.',activeProfile:'default'};
+window.S=S;
 const INFLIGHT={};  // keyed by session_id while request in-flight
 const MSG_QUEUE=[];  // messages queued while a request is in-flight
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let _mainView='chat';
+function switchMainView(view){
+  _mainView=view==='paperclip'?'paperclip':'chat';
+  document.body.classList.toggle('paperclip-main-mode', _mainView==='paperclip');
+  const chatTab=$('tabHermesChat');
+  const paperclipTab=$('tabPaperclip');
+  if(chatTab){chatTab.classList.toggle('active', _mainView==='chat');chatTab.setAttribute('aria-selected', _mainView==='chat'?'true':'false');}
+  if(paperclipTab){paperclipTab.classList.toggle('active', _mainView==='paperclip');paperclipTab.setAttribute('aria-selected', _mainView==='paperclip'?'true':'false');}
+  const panel=$('mainPaperclipPanel');
+  if(panel) panel.style.display=_mainView==='paperclip'?'block':'none';
+  if(_mainView==='paperclip'){
+    if(typeof initPaperclipLiveView==='function') initPaperclipLiveView();
+    if(typeof renderPaperclipWorkflowHistory==='function') renderPaperclipWorkflowHistory();
+    if(typeof renderArtifactList==='function') renderArtifactList();
+    if(typeof renderPaperclipConsoleSummary==='function') renderPaperclipConsoleSummary();
+    if(typeof updatePaperclipApprovalUI==='function') updatePaperclipApprovalUI();
+  }
+}
+window.switchMainView=switchMainView;
+
+let _paperclipLiveReady=false;
+async function initPaperclipLiveView(){
+  const frame=$('paperclipLiveFrame');
+  const status=$('paperclipLiveStatus');
+  const fallback=$('paperclipLiveFallback');
+  const open=$('paperclipOpenExternal');
+  const refresh=$('btnPaperclipRefresh');
+  const retry=$('btnPaperclipRetry');
+  if(!_paperclipLiveReady){
+    if(refresh) refresh.onclick=()=>refreshPaperclipLiveView(true);
+    if(retry) retry.onclick=()=>refreshPaperclipLiveView(true);
+    _paperclipLiveReady=true;
+  }
+  if(frame&&!frame.dataset.srcApplied){
+    frame.dataset.srcApplied='1';
+    frame.onload=()=>{
+      if(status&&!status.classList.contains('ok')){
+        status.textContent='화면 로드됨';
+        status.className='paperclip-live-status ok';
+      }
+      if(fallback) fallback.style.display='none';
+    };
+  }
+  await refreshPaperclipLiveView(false);
+}
+async function refreshPaperclipLiveView(forceReload){
+  const frame=$('paperclipLiveFrame');
+  const status=$('paperclipLiveStatus');
+  const fallback=$('paperclipLiveFallback');
+  const open=$('paperclipOpenExternal');
+  const fallbackUrl='http://127.0.0.1:3100';
+  let url=fallbackUrl;
+  if(open) open.href=url;
+  if(frame && (!frame.src || frame.src!==url+'/' || forceReload)) frame.src=url;
+  if(fallback) fallback.style.display='none';
+  if(status){status.textContent='Paperclip 화면 로드 중...';status.className='paperclip-live-status warn';}
+  let endpointOk=false;
+  try{
+    const res=await fetch(new URL('/api/paperclip/status',location.origin).href,{credentials:'include'});
+    const data=await res.json();
+    url=(data&&data.url)||fallbackUrl;
+    if(open) open.href=url;
+    if(frame && (!frame.src || frame.src!==url+'/' || forceReload)) frame.src=url;
+    endpointOk=Boolean(data&&data.ok);
+  }catch(e){
+    endpointOk=false;
+  }
+  if(endpointOk){
+    if(status){status.textContent='연결됨 · 실제 Paperclip';status.className='paperclip-live-status ok';}
+    if(fallback) fallback.style.display='none';
+    return;
+  }
+  setTimeout(()=>{
+    if(!frame) return;
+    if(status&&status.classList.contains('warn')) status.textContent='Paperclip 화면 확인 중...';
+    // iframe onload cannot always be inspected cross-origin, so only show fallback if the frame never fires onload.
+    if(!status||!status.classList.contains('ok')){
+      if(status){status.textContent='직접 연결 시도 중';status.className='paperclip-live-status warn';}
+    }
+  },1200);
+}
+window.initPaperclipLiveView=initPaperclipLiveView;
+window.refreshPaperclipLiveView=refreshPaperclipLiveView;
 
 // Dynamic model labels -- populated by populateModelDropdown(), fallback to static map
 let _dynamicModelLabels={};
@@ -116,11 +200,84 @@ function scrollIfPinned(){
   if(!_scrollPinned) return;
   const el=$('messages');
   if(el) el.scrollTop=el.scrollHeight;
+  updateScrollControls();
 }
 function scrollToBottom(){
   _scrollPinned=true;
   const el=$('messages');
-  if(el) el.scrollTop=el.scrollHeight;
+  if(el) el.scrollTo({top:el.scrollHeight,behavior:'smooth'});
+  updateScrollControls();
+}
+function scrollChatByPage(direction){
+  const el=$('messages');
+  if(!el) return;
+  _scrollPinned=false;
+  el.scrollBy({top:(direction||1)*Math.max(260,el.clientHeight*.72),behavior:'smooth'});
+  setTimeout(updateScrollControls,180);
+}
+function updateScrollControls(){
+  const el=$('messages');
+  const ctr=$('scrollControls');
+  const btn=$('btnScrollBottom');
+  if(!el||!ctr) return;
+  const canScroll=el.scrollHeight>el.clientHeight+20;
+  const nearBottom=el.scrollHeight-el.scrollTop-el.clientHeight<80;
+  ctr.classList.toggle('is-visible',canScroll);
+  if(btn) btn.classList.toggle('has-new-context',canScroll&&!nearBottom);
+}
+function setQuickbarCollapsed(collapsed){
+  const bar=$('artifactBar');
+  const label=$('quickbarToggleLabel');
+  const hint=$('quickbarToggleHint');
+  const icon=$('quickbarToggleIcon');
+  const isSide=bar&&bar.classList.contains('side-quickbar');
+  if(!bar) return;
+  bar.classList.toggle('is-collapsed',!!collapsed);
+  localStorage.setItem('hermes-webui-quickbar-collapsed',collapsed?'1':'0');
+  if(label) label.textContent=collapsed?'빠른 실행 펼치기':'빠른 실행 접기';
+  if(hint) hint.textContent=collapsed?(isSide?'사이드 도구 접힘':'채팅 공간 확보'):(isSide?'사이드 도구 표시 중':'아티팩트·워크플로우 표시 중');
+  if(icon) icon.textContent=collapsed?'⌄':'⌃';
+  requestAnimationFrame(()=>{updateScrollControls();scrollIfPinned();});
+}
+function toggleQuickbar(){
+  const bar=$('artifactBar');
+  setQuickbarCollapsed(!(bar&&bar.classList.contains('is-collapsed')));
+}
+function initQuickbarAndScroll(){
+  const bar=$('artifactBar');
+  const saved=localStorage.getItem('hermes-webui-quickbar-collapsed');
+  const defaultCollapsed=bar&&bar.classList.contains('side-quickbar')?false:true;
+  setQuickbarCollapsed(saved===null?defaultCollapsed:saved==='1');
+  const el=$('messages');
+  if(el){
+    el.addEventListener('scroll',updateScrollControls,{passive:true});
+    el.addEventListener('wheel',()=>{setTimeout(updateScrollControls,0);},{passive:true});
+  }
+  updateScrollControls();
+}
+function syncModelDrawer(){
+  const drawer=$('modelDrawer');
+  const current=$('modelDrawerCurrent');
+  const icon=$('modelDrawerIcon');
+  if(!drawer) return;
+  const collapsed=drawer.classList.contains('is-collapsed');
+  if(current) current.textContent=getModelLabel(($('modelSelect')&&$('modelSelect').value)||'');
+  if(icon) icon.textContent=collapsed?'⌄':'⌃';
+}
+function setModelDrawerCollapsed(collapsed){
+  const drawer=$('modelDrawer');
+  if(!drawer) return;
+  drawer.classList.toggle('is-collapsed',!!collapsed);
+  localStorage.setItem('hermes-webui-model-drawer-collapsed',collapsed?'1':'0');
+  syncModelDrawer();
+}
+function toggleModelDrawer(){
+  const drawer=$('modelDrawer');
+  setModelDrawerCollapsed(!(drawer&&drawer.classList.contains('is-collapsed')));
+}
+function initModelDrawer(){
+  const saved=localStorage.getItem('hermes-webui-model-drawer-collapsed');
+  setModelDrawerCollapsed(saved===null?true:saved==='1');
 }
 
 function getModelLabel(modelId){
@@ -128,7 +285,7 @@ function getModelLabel(modelId){
   // Check dynamic labels first, then fall back to splitting the ID
   if(_dynamicModelLabels[modelId]) return _dynamicModelLabels[modelId];
   // Static fallback for common models
-  const STATIC_LABELS={'openai/gpt-5.4-mini':'GPT-5.4 Mini','openai/gpt-4o':'GPT-4o','openai/o3':'o3','openai/o4-mini':'o4-mini','anthropic/claude-sonnet-4.6':'Sonnet 4.6','anthropic/claude-sonnet-4-5':'Sonnet 4.5','anthropic/claude-haiku-3-5':'Haiku 3.5','google/gemini-2.5-pro':'Gemini 2.5 Pro','deepseek/deepseek-chat-v3-0324':'DeepSeek V3','meta-llama/llama-4-scout':'Llama 4 Scout'};
+  const STATIC_LABELS={'openai/gpt-5.5':'GPT-5.5','openai/gpt-5.4-mini':'GPT-5.4 Mini','openai/gpt-4o':'GPT-4o','openai/o3':'o3','openai/o4-mini':'o4-mini','anthropic/claude-sonnet-4.6':'Sonnet 4.6','anthropic/claude-sonnet-4-5':'Sonnet 4.5','anthropic/claude-haiku-3-5':'Haiku 3.5','google/gemini-2.5-pro':'Gemini 2.5 Pro','deepseek/deepseek-chat-v3-0324':'DeepSeek V3','meta-llama/llama-4-scout':'Llama 4 Scout'};
   if(STATIC_LABELS[modelId]) return STATIC_LABELS[modelId];
   return modelId.split('/').pop()||'Unknown';
 }
@@ -362,6 +519,9 @@ async function checkInflightOnBoot(sid) {
 function syncTopbar(){
   if(!S.session){
     document.title='Hermes';
+    const modelChip=$('modelChip');
+    const modelSelect=$('modelSelect');
+    if(modelChip && modelSelect) modelChip.textContent=getModelLabel(modelSelect.value);
     // Show default workspace name even without a session
     const sidebarName=$('sidebarWsName');
     if(sidebarName && sidebarName.textContent==='Workspace'){
@@ -395,8 +555,9 @@ function syncTopbar(){
   // Show Clear button only when session has messages
   const clearBtn=$('btnClearConv');
   if(clearBtn) clearBtn.style.display=(S.messages&&S.messages.filter(msg=>msg.role!=='tool').length>0)?'':'none';
-  const displayModel=$('modelSelect').value||m;
-  $('modelChip').textContent=getModelLabel(displayModel);
+  const displayModel=($('modelSelect')&&$('modelSelect').value)||S.session.model||'';
+  const modelChip=$('modelChip');
+  if(modelChip) modelChip.textContent=getModelLabel(displayModel);
   const ws=S.session.workspace||'';
   // Update sidebar workspace display
   const sidebarName=$('sidebarWsName');

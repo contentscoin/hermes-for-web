@@ -189,6 +189,9 @@ async function send(){
         clearLiveToolCards();
         S.busy=false;
         syncTopbar();renderMessages();loadDir('.');
+        if(typeof maybeRenameRecentPaperclipArtifactFromMessages==='function'){
+          setTimeout(()=>{ maybeRenameRecentPaperclipArtifactFromMessages(); }, 50);
+        }
       }
       renderSessionList();setBusy(false);setStatus('');
     });

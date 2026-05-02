@@ -52,7 +52,7 @@ class Session:
         self.pinned = bool(pinned)
         self.archived = bool(archived)
         self.project_id = project_id or None
-        self.profile = profile
+        self.profile = profile or 'default'
         self.input_tokens = input_tokens or 0
         self.output_tokens = output_tokens or 0
         self.estimated_cost = estimated_cost
@@ -109,13 +109,16 @@ def get_session(sid):
         return s
     raise KeyError(sid)
 
-def new_session(workspace=None, model=None):
+def new_session(workspace=None, model=None, profile=None):
     # Use _cfg.DEFAULT_MODEL (not the import-time snapshot) so save_settings() changes take effect
-    try:
-        from api.profiles import get_active_profile_name
-        _profile = get_active_profile_name()
-    except ImportError:
-        _profile = None
+    if profile is None:
+        try:
+            from api.profiles import get_active_profile_name
+            _profile = get_active_profile_name()
+        except ImportError:
+            _profile = None
+    else:
+        _profile = profile
     s = Session(workspace=workspace or get_last_workspace(), model=model or _cfg.DEFAULT_MODEL, profile=_profile)
     with LOCK:
         SESSIONS[s.session_id] = s

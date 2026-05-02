@@ -9,7 +9,7 @@
 <link rel="apple-touch-icon" href="/static/favicon.png?v=20260406c">
 <link rel="shortcut icon" href="/static/favicon.png?v=20260406c">
 <script>(function(){var t=localStorage.getItem('hermes-theme');if(t&&t!=='dark')document.documentElement.dataset.theme=t;})()</script>
-<link rel="stylesheet" href="/static/style.css?v=20260406d">
+<link rel="stylesheet" href="/static/style.css?v=20260502-paperclip-live1">
   <!-- Prism.js syntax highlighting (loaded async, non-blocking) -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css" integrity="sha384-wFjoQjtV1y5jVHbt0p35Ui8aV8GVpEZkyF99OXWqP/eNJDU93D3Ugxkoyh6Y2I4A" crossorigin="anonymous">
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-core.min.js" integrity="sha384-MXybTpajaBV0AkcBaCPT4KIvo0FzoCiWXgcihYsw4FUkEz0Pv3JGV6tk2G8vJtDc" crossorigin="anonymous" defer></script>
@@ -31,17 +31,21 @@
       <span class="petal p10"></span>
     </div>
     <div class="sidebar-header"><div class="logo">H</div><div><h1 style="margin:0;font-size:15px;font-weight:700;letter-spacing:-.01em">Hermes</h1><div style="font-size:10px;color:var(--muted);opacity:.8;margin-top:1px">v0.35.1</div></div></div>
-    <div class="sidebar-nav">
-      <button class="nav-tab active" data-panel="chat" data-label="채팅" onclick="switchPanel('chat')" title="채팅">&#128172;</button>
-      <button class="nav-tab" data-panel="tasks" data-label="작업" onclick="switchPanel('tasks')" title="예약 작업">&#128197;</button>
-      <button class="nav-tab" data-panel="skills" data-label="스킬" onclick="switchPanel('skills')" title="스킬">&#129513;</button>
-      <button class="nav-tab" data-panel="memory" data-label="기억" onclick="switchPanel('memory')" title="기억">&#129504;</button>
-      <button class="nav-tab" data-panel="workspaces" data-label="공간" onclick="switchPanel('workspaces')" title="작업공간">&#128193;</button>
-      <button class="nav-tab" data-panel="profiles" data-label="프로필" onclick="switchPanel('profiles')" title="에이전트 프로필"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></button>
-      <button class="nav-tab" data-panel="todos" data-label="할 일" onclick="switchPanel('todos')" title="현재 할 일 목록">&#128221;</button>
-      <button class="nav-tab" data-panel="artifacts" data-label="아티팩트" onclick="switchPanel('artifacts')" title="아티팩트">&#128230;</button>
-      <button class="nav-tab" data-panel="setup" data-label="설치팩" onclick="switchPanel('setup')" title="Setup Packs">&#129520;</button>
-      <button class="nav-tab" data-panel="checks" data-label="점검" onclick="switchPanel('checks')" title="Preflight Validator">&#128737;</button>
+    <div class="sidebar-nav ceo-nav" aria-label="CEO Console navigation">
+      <div class="nav-section-label">Core</div>
+      <button class="nav-tab nav-primary active" data-panel="chat" data-label="채팅" onclick="switchPanel('chat')" title="채팅">&#128172;<span>채팅</span></button>
+      <button class="nav-tab nav-primary" data-panel="workspaces" data-label="공간" onclick="switchPanel('workspaces')" title="작업공간">&#128193;<span>공간</span></button>
+      <button class="nav-tab nav-primary" data-panel="artifacts" data-label="아티팩트" onclick="switchPanel('artifacts')" title="아티팩트">&#128230;<span>산출물</span></button>
+      <button class="nav-tab nav-primary" data-panel="console" data-label="콘솔" onclick="switchPanel('console')" title="Paperclip Console">&#128206;<span>Paperclip</span></button>
+      <div class="nav-section-label nav-section-secondary">More</div>
+      <button class="nav-tab nav-secondary" data-panel="tasks" data-label="작업" onclick="switchPanel('tasks')" title="예약 작업">&#128197;<span>예약</span></button>
+      <button class="nav-tab nav-secondary" data-panel="todos" data-label="할 일" onclick="switchPanel('todos')" title="현재 할 일 목록">&#128221;<span>할 일</span></button>
+      <button class="nav-tab nav-secondary" data-panel="skills" data-label="스킬" onclick="switchPanel('skills')" title="스킬">&#129513;<span>스킬</span></button>
+      <button class="nav-tab nav-secondary" data-panel="memory" data-label="기억" onclick="switchPanel('memory')" title="기억">&#129504;<span>기억</span></button>
+      <button class="nav-tab nav-secondary" data-panel="facts" data-label="후보" onclick="switchPanel('facts')" title="Memory Candidate Inbox">&#128229;<span>후보</span></button>
+      <button class="nav-tab nav-secondary" data-panel="profiles" data-label="프로필" onclick="switchPanel('profiles')" title="에이전트 프로필"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><span>프로필</span></button>
+      <button class="nav-tab nav-secondary" data-panel="setup" data-label="설치팩" onclick="switchPanel('setup')" title="Setup Packs">&#129520;<span>설치</span></button>
+      <button class="nav-tab nav-secondary" data-panel="checks" data-label="점검" onclick="switchPanel('checks')" title="Preflight Validator">&#128737;<span>점검</span></button>
     </div>
     <!-- Chat panel -->
     <div class="panel-view active" id="panelChat">
@@ -127,6 +131,14 @@
         <div id="memEditError" style="font-size:11px;color:var(--accent);margin-top:6px;display:none"></div>
       </div>
     </div>
+    <!-- Memory Candidate Inbox panel -->
+    <div class="panel-view" id="panelFacts">
+      <div class="sidebar-section" style="padding-bottom:4px;display:flex;align-items:center;justify-content:space-between">
+        <div style="font-size:11px;color:var(--muted)">Memory Candidate Inbox</div>
+        <button class="cron-btn run" style="padding:3px 8px;font-size:10px" onclick="loadMemoryInbox()">새로고침</button>
+      </div>
+      <div class="memory-inbox-panel" id="memoryInboxPanel"><div class="memory-inbox-empty">후보 패널을 여는 중...</div></div>
+    </div>
     <!-- Todo panel -->
     <div class="panel-view" id="panelTodos">
       <div style="padding:10px 12px 4px;font-size:11px;color:var(--muted);flex-shrink:0">현재 할 일 목록</div>
@@ -181,10 +193,26 @@
         <button class="quick-action setup-pack" data-pack="webui-only-install">🪄 WebUI-only Install</button>
         <button class="quick-action setup-pack" data-pack="last30days">📈 last30days</button>
         <button class="quick-action setup-pack" data-pack="autoresearch">🔬 AutoResearch</button>
+        <button class="quick-action setup-pack" data-pack="paperclip-ops">📎 Paperclip Ops</button>
       </div>
       <div class="setup-pack-help" id="setupPackHelpSidebar">팩 위에 마우스를 올리면 설명이 보입니다. 클릭하면 해당 환경/흐름을 점검하고 설치·설정 작업을 시작합니다.</div>
       <div class="setup-pack-detail" id="setupPackDetailSidebar"></div>
       <div class="skills-list" id="setupPackHistorySidebar"><div style="padding:12px;color:var(--muted);font-size:12px">아직 실행한 setup pack 이 없습니다.</div></div>
+    </div>
+    <div class="panel-view" id="panelConsole">
+      <div class="sidebar-section" style="padding-bottom:4px;display:flex;align-items:center;justify-content:space-between">
+        <div style="font-size:11px;color:var(--muted)">Paperclip Console</div>
+      </div>
+      <div style="padding:0 12px 8px" class="artifact-list">
+        <div class="setup-pack-help">Decision Report, 승인 상태, 반영 결과 Artifact, workflow history 를 한 곳에서 보는 운영 콘솔입니다.</div>
+        <div class="setup-pack-help" id="paperclipConsoleHint">승인 상태와 최근 반영 결과를 불러오는 중...</div>
+        <div class="artifact-shelf-actions" style="margin:4px 0 8px">
+          <button class="artifact-action" id="btnConsoleTelegram">📣 Telegram</button>
+          <button class="artifact-action" id="btnConsoleMemory">🧠 Memory</button>
+        </div>
+        <div class="artifact-list" id="paperclipWorkflowHistoryPanel"></div>
+        <div class="artifact-list" id="paperclipArtifactListPanel"></div>
+      </div>
     </div>
     <div class="panel-view" id="panelChecks">
       <div class="sidebar-section" style="padding-bottom:4px;display:flex;align-items:center;justify-content:space-between">
@@ -197,42 +225,49 @@
       </div>
       <div class="skills-list" id="preflightListSidebar"><div style="padding:12px;color:var(--muted);font-size:12px">점검 버튼을 눌러 결과를 확인하세요.</div></div>
     </div>
-    <div class="sidebar-bottom">
-      <div class="field-label" style="font-size:10px;letter-spacing:.07em;margin-bottom:4px">모델</div>
-      <select id="modelSelect">
-        <optgroup label="OpenAI">
-          <option value="openai/gpt-5.4-mini">GPT-5.4 Mini</option>
-          <option value="openai/gpt-4o">GPT-4o</option>
-          <option value="openai/o3">o3</option>
-          <option value="openai/o4-mini">o4-mini</option>
-        </optgroup>
-        <optgroup label="Anthropic">
-          <option value="anthropic/claude-sonnet-4.6">Claude Sonnet 4.6</option>
-          <option value="anthropic/claude-sonnet-4-5">Claude Sonnet 4.5</option>
-          <option value="anthropic/claude-haiku-3-5">Claude Haiku 3.5</option>
-        </optgroup>
-        <optgroup label="Other">
-          <option value="google/gemini-2.5-pro">Gemini 2.5 Pro</option>
-          <option value="deepseek/deepseek-chat-v3-0324">DeepSeek V3</option>
-          <option value="meta-llama/llama-4-scout">Llama 4 Scout</option>
-        </optgroup>
-      </select>
-      <div style="position:relative">
-        <div id="sidebarWsDisplay" style="display:flex;align-items:center;gap:7px;padding:0 0 8px;cursor:pointer;border-radius:8px;transition:background .15s" onclick="toggleWsDropdown()" title="Switch workspace">
-          <span style="font-size:14px;opacity:.7">&#128193;</span>
-          <div style="min-width:0;flex:1">
-            <div style="font-size:11px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="sidebarWsName">작업공간</div>
-            <div style="font-size:10px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px" id="sidebarWsPath"></div>
+    <div class="sidebar-bottom model-drawer" id="modelDrawer">
+      <button class="model-drawer-toggle" id="btnModelDrawerToggle" onclick="toggleModelDrawer()" title="모델/작업공간/내보내기 영역 접기 또는 펼치기">
+        <span class="model-drawer-title">모델 · 작업공간</span>
+        <span class="model-drawer-current" id="modelDrawerCurrent">GPT-5.5</span>
+        <span class="model-drawer-icon" id="modelDrawerIcon">⌄</span>
+      </button>
+      <div class="model-drawer-content" id="modelDrawerContent">
+        <div class="field-label" style="font-size:10px;letter-spacing:.07em;margin-bottom:4px">모델</div>
+        <select id="modelSelect">
+          <optgroup label="OpenAI">
+            <option value="openai/gpt-5.4-mini">GPT-5.4 Mini</option>
+            <option value="openai/gpt-4o">GPT-4o</option>
+            <option value="openai/o3">o3</option>
+            <option value="openai/o4-mini">o4-mini</option>
+          </optgroup>
+          <optgroup label="Anthropic">
+            <option value="anthropic/claude-sonnet-4.6">Claude Sonnet 4.6</option>
+            <option value="anthropic/claude-sonnet-4-5">Claude Sonnet 4.5</option>
+            <option value="anthropic/claude-haiku-3-5">Claude Haiku 3.5</option>
+          </optgroup>
+          <optgroup label="Other">
+            <option value="google/gemini-2.5-pro">Gemini 2.5 Pro</option>
+            <option value="deepseek/deepseek-chat-v3-0324">DeepSeek V3</option>
+            <option value="meta-llama/llama-4-scout">Llama 4 Scout</option>
+          </optgroup>
+        </select>
+        <div style="position:relative">
+          <div id="sidebarWsDisplay" style="display:flex;align-items:center;gap:7px;padding:0 0 8px;cursor:pointer;border-radius:8px;transition:background .15s" onclick="toggleWsDropdown()" title="Switch workspace">
+            <span style="font-size:14px;opacity:.7">&#128193;</span>
+            <div style="min-width:0;flex:1">
+              <div style="font-size:11px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="sidebarWsName">작업공간</div>
+              <div style="font-size:10px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px" id="sidebarWsPath"></div>
+            </div>
+            <span style="font-size:10px;color:var(--muted);flex-shrink:0">&#9662;</span>
           </div>
-          <span style="font-size:10px;color:var(--muted);flex-shrink:0">&#9662;</span>
+          <div class="ws-dropdown" id="wsDropdown"></div>
         </div>
-        <div class="ws-dropdown" id="wsDropdown"></div>
-      </div>
-      <div class="sidebar-actions">
-        <button class="sm-btn" id="btnDownload" title="마크다운으로 다운로드">&#8595; 대화록</button>
-        <button class="sm-btn" id="btnExportJSON" title="세션 전체를 JSON으로 내보내기">&#10092;/&#10093; JSON</button>
-        <button class="sm-btn" id="btnImportJSON" title="JSON 세션 가져오기">&#8593; 가져오기</button>
-        <input type="file" id="importFileInput" accept=".json" style="display:none">
+        <div class="sidebar-actions">
+          <button class="sm-btn" id="btnDownload" title="마크다운으로 다운로드">&#8595; 대화록</button>
+          <button class="sm-btn" id="btnExportJSON" title="세션 전체를 JSON으로 내보내기">&#10092;/&#10093; JSON</button>
+          <button class="sm-btn" id="btnImportJSON" title="JSON 세션 가져오기">&#8593; 가져오기</button>
+          <input type="file" id="importFileInput" accept=".json" style="display:none">
+        </div>
       </div>
     </div>
   <div class="resize-handle" id="sidebarResize"></div>
@@ -248,6 +283,7 @@
           <div class="chip profile-chip" id="profileChip" onclick="toggleProfileDropdown()" title="프로필 전환" style="cursor:pointer"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><span id="profileChipLabel">default</span> &#9662;</div>
           <div class="profile-dropdown" id="profileDropdown"></div>
         </div>
+        <button class="chip" id="btnMultiAgent" onclick="toggleMultiAgentWorkspace()" title="4-lane 멀티에이전트 워크스페이스">🧩 Multi-Agent</button>
         <div class="chip model" id="modelChip">GPT-5.4 Mini</div>
 
         <button class="chip clear-btn" id="btnClearConv" onclick="clearConversation()" title="이 대화의 메시지 전체 지우기" style="display:none">&#128465; 지우기</button>
@@ -255,26 +291,9 @@
         <button class="chip mobile-files-btn" id="btnMobileFiles" onclick="toggleMobileFiles()" title="파일">&#128193;</button>
       </div>
     </div>
-    <div class="artifact-bar" id="artifactBar">
-      <div class="artifact-bar-inner">
-        <div class="artifact-bar-group">
-          <div class="artifact-bar-title">아티팩트 빠른 실행</div>
-          <div class="artifact-bar-actions">
-            <button class="artifact-action" data-artifact="obsidian-note">📝 옵시디언 노트 초안</button>
-            <button class="artifact-action" data-artifact="share-note">🔗 ShareNote 포함 노트</button>
-            <button class="artifact-action" data-artifact="schedule-followup">⏱️ 후속 작업 예약</button>
-          </div>
-        </div>
-        <div class="artifact-bar-group workflow-group">
-          <div class="artifact-bar-title">원클릭 워크플로우</div>
-          <div class="artifact-bar-actions">
-            <button class="artifact-action primary" data-workflow="generate-note">⚡ 노트 생성</button>
-            <button class="artifact-action primary" data-workflow="generate-posting">⚡ 포스팅 브리프 생성</button>
-            <button class="artifact-action" data-workflow="save-memory">🧠 기억에 저장</button>
-            <button class="artifact-action" data-workflow="telegram-handoff">📣 텔레그램 핸드오프</button>
-          </div>
-        </div>
-      </div>
+    <div class="main-view-tabs" role="tablist" aria-label="메인 화면 전환">
+      <button class="main-view-tab active" id="tabHermesChat" role="tab" aria-selected="true" aria-controls="messages" onclick="switchMainView('chat')">💬 Hermes 채팅</button>
+      <button class="main-view-tab" id="tabPaperclip" role="tab" aria-selected="false" aria-controls="mainPaperclipPanel" onclick="switchMainView('paperclip')">📎 Paperclip</button>
     </div>
     <div class="artifact-shelf home-tools" id="artifactShelf">
       <div class="artifact-shelf-inner">
@@ -309,6 +328,7 @@
           <button class="quick-action setup-pack" data-pack="webui-only-install">🪄 WebUI-only Install</button>
           <button class="quick-action setup-pack" data-pack="last30days">📈 last30days</button>
           <button class="quick-action setup-pack" data-pack="autoresearch">🔬 AutoResearch</button>
+          <button class="quick-action setup-pack" data-pack="paperclip-ops">📎 Paperclip Ops</button>
         </div>
         <div class="setup-pack-help" id="setupPackHelp">팩을 눌러 설치/설정 흐름을 시작하세요. 각 팩은 “이 기능이 뭔지”보다 “내가 뭘 하려는지” 기준으로 묶여 있습니다.</div>
         <div class="setup-pack-detail" id="setupPackDetail"></div>
@@ -329,6 +349,56 @@
           </div>
         </div>
         <div class="artifact-list" id="preflightList"></div>
+      </div>
+    </div>
+    <div class="main-paperclip-panel" id="mainPaperclipPanel" style="display:none">
+      <div class="paperclip-live-shell">
+        <div class="paperclip-live-toolbar">
+          <div>
+            <div class="main-paperclip-title">Paperclip 연결 화면</div>
+            <div class="main-paperclip-sub">로컬 Paperclip 서버를 그대로 임베드합니다. 이 화면 안에서 실제 프로젝트/이슈/작업을 직접 조작할 수 있습니다.</div>
+          </div>
+          <div class="paperclip-live-actions">
+            <span class="paperclip-live-status" id="paperclipLiveStatus">연결 확인 중...</span>
+            <button class="artifact-action" id="btnPaperclipRefresh" type="button">↻ 새로고침</button>
+            <a class="artifact-action" id="paperclipOpenExternal" href="http://127.0.0.1:3100" target="_blank" rel="noreferrer">↗ 새 창</a>
+            <button class="artifact-action" onclick="switchMainView('chat')" type="button">💬 채팅</button>
+          </div>
+        </div>
+        <div class="paperclip-live-frame-wrap">
+          <iframe id="paperclipLiveFrame" class="paperclip-live-frame" title="Paperclip" src="http://127.0.0.1:3100"></iframe>
+          <div class="paperclip-live-fallback" id="paperclipLiveFallback" style="display:none">
+            <div class="paperclip-live-fallback-title">Paperclip 서버에 연결하지 못했습니다.</div>
+            <div class="paperclip-live-fallback-body">현재 기본 연결 주소는 <code>http://127.0.0.1:3100</code> 입니다. Paperclip이 실행 중인지 확인한 뒤 새로고침하세요.</div>
+            <div class="artifact-shelf-actions" style="margin-top:12px">
+              <button class="artifact-action primary" id="btnPaperclipRetry" type="button">다시 연결</button>
+              <a class="artifact-action" href="http://127.0.0.1:3100" target="_blank" rel="noreferrer">새 창으로 열기</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="multi-agent-shell" id="multiAgentShell" style="display:none">
+      <div class="multi-agent-shell-inner">
+        <div class="multi-agent-toolbar">
+          <div>
+            <div class="multi-agent-title">Multi-Agent Workspace</div>
+            <div class="multi-agent-sub">hela / plan / dev / mkt 를 동시에 실행하는 4-lane 작업면</div>
+          </div>
+          <div class="multi-agent-toolbar-actions">
+            <button class="artifact-action" onclick="resetMultiAgentWorkspace()">↺ Reset lanes</button>
+          </div>
+        </div>
+        <div class="multi-agent-router">
+          <div class="multi-agent-router-label">기본 질문창</div>
+          <div class="multi-agent-router-sub">기본은 Hela만 응답합니다. Plan/Dev/Mkt는 이름·핸들·역할 키워드로 직접 호출할 때만 실행됩니다.</div>
+          <div class="multi-agent-router-row">
+            <textarea id="multiAgentPrompt" placeholder="예: 지금 뭐부터 해야 해? / Clay, 이거 구현 가능해? / Jay, 이 문구 다듬어줘"></textarea>
+            <button class="lane-btn primary" id="btnRouteMultiAgent">보내기</button>
+          </div>
+        </div>
+        <div class="multi-agent-grid" id="multiAgentGrid"></div>
+        <div class="multi-agent-summary" id="multiAgentSummary"></div>
       </div>
     </div>
     <div class="messages" id="messages">
@@ -354,6 +424,10 @@
       </div>
       <div class="messages-inner" id="msgInner"></div>
       <div id="liveToolCards" style="display:none;max-width:800px;margin:0 auto;width:100%;padding:0 24px;"></div>
+    </div>
+    <div class="scroll-controls" id="scrollControls" aria-label="채팅 스크롤 컨트롤">
+      <button class="scroll-control-btn" onclick="scrollChatByPage(-1)" title="채팅 위로 스크롤">↑</button>
+      <button class="scroll-control-btn primary" id="btnScrollBottom" onclick="scrollToBottom()" title="채팅 맨 아래로">↓</button>
     </div>
     <div class="reconnect-banner" id="reconnectBanner">
       <span id="reconnectMsg">&#9888; 이전에 응답이 진행 중이었을 수 있습니다. 메시지를 다시 불러올까요?</span>
@@ -445,6 +519,42 @@
       </div>
     </div>
     <div class="breadcrumb-bar" id="breadcrumbBar" style="display:none"></div>
+    <div class="artifact-bar quickbar-collapsible side-quickbar" id="artifactBar">
+      <div class="artifact-bar-inner">
+        <button class="quickbar-toggle" id="btnQuickbarToggle" onclick="toggleQuickbar()" title="아티팩트/원클릭 워크플로우 접기 또는 펼치기">
+          <span id="quickbarToggleLabel">빠른 실행 펼치기</span>
+          <span class="quickbar-toggle-hint" id="quickbarToggleHint">사이드 고정</span>
+          <span class="quickbar-toggle-icon" id="quickbarToggleIcon">⌄</span>
+        </button>
+        <div class="artifact-bar-content" id="quickbarContent">
+          <div class="artifact-bar-group">
+            <div class="artifact-bar-title">아티팩트 빠른 실행</div>
+            <div class="artifact-bar-actions">
+              <button class="artifact-action" data-artifact="obsidian-note">📝 옵시디언 노트 초안</button>
+              <button class="artifact-action" data-artifact="share-note">🔗 ShareNote 포함 노트</button>
+              <button class="artifact-action" data-artifact="schedule-followup">⏱️ 후속 작업 예약</button>
+            </div>
+          </div>
+          <div class="artifact-bar-group workflow-group">
+            <div class="artifact-bar-title">원클릭 워크플로우</div>
+            <div class="artifact-bar-actions">
+              <button class="artifact-action primary" data-workflow="generate-note">⚡ 노트 생성</button>
+              <button class="artifact-action primary" data-workflow="generate-posting">⚡ 포스팅 브리프 생성</button>
+              <button class="artifact-action primary" data-workflow="generate-decision-report">📎 Decision Report 초안</button>
+              <button class="artifact-action" data-workflow="request-approval">🛂 승인 요청 문구</button>
+              <button class="artifact-action primary" data-workflow="reflect-paperclip-comment" id="btnReflectPaperclipComment" disabled title="comment only 승인 후에만 활성화됩니다">💬 Comment 반영</button>
+              <button class="artifact-action primary" data-workflow="reflect-paperclip-issue" id="btnReflectPaperclipIssue" disabled title="issue create 승인 후에만 활성화됩니다">🧩 Issue 생성</button>
+              <button class="artifact-action primary" data-workflow="reflect-paperclip-full" id="btnReflectPaperclipFull" disabled title="full execution 승인 후에만 활성화됩니다">✅ Full 반영</button>
+              <button class="artifact-action primary" data-workflow="extract-memory-candidates">📥 기억 후보 추출</button>
+              <button class="artifact-action" data-workflow="save-memory">🧠 기억 후보 검토</button>
+              <button class="artifact-action" data-workflow="telegram-handoff">📣 텔레그램 핸드오프</button>
+            </div>
+            <div class="setup-pack-help" id="paperclipApprovalHint" style="margin-top:8px">아직 명시적 실행승인이 없습니다. 승인 전에는 Decision Report 초안까지만 진행합니다.</div>
+            <div class="artifact-list" id="paperclipWorkflowHistory" style="margin-top:8px"></div>
+          </div>
+        </div>
+      </div>
+    </div>
     <div class="file-tree" id="fileTree"></div>
     <div class="workspace-empty" id="workspaceEmpty">
       <div class="workspace-empty-icon">📂</div>
@@ -650,12 +760,14 @@
   </button>
 </nav>
 <div class="toast" id="toast"></div>
-<script src="/static/ui.js?v=20260406a"></script>
+<script src="/static/ui.js?v=20260502-paperclip-live1"></script>
 <script src="/static/workspace.js?v=20260406a"></script>
 <script src="/static/sessions.js?v=20260406a"></script>
 <script src="/static/commands.js?v=20260406a"></script>
 <script src="/static/messages.js?v=20260406a"></script>
-<script src="/static/panels.js?v=20260406a"></script>
-<script src="/static/boot.js?v=20260406a"></script>
+<script src="/static/panels.js?v=20260501-facts1"></script>
+<script src="/static/facts.js?v=20260501-facts1"></script>
+<script src="/static/multiagent.js?v=20260426-ceo4"></script>
+<script src="/static/boot.js?v=20260502-main-tabs1"></script>
 </body>
 </html>

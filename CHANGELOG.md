@@ -16,7 +16,7 @@
 - Added Korean-first premium themes: **벚꽃**, **네오브루탈리즘**, **구찌 스타일**.
 - Cherry Blossom theme now supports optional falling petal animation along the sidebar.
 - Added favicon assets (`favicon.svg`, `favicon.png`) and hooked them into the app shell.
-- Expanded model picker so authenticated OpenAI Codex installs can surface **GPT-5.4**, **GPT-5.4 Mini**, and **Codex Mini** alongside local models like Darwin.
+- Expanded model picker so authenticated OpenAI Codex installs can surface **GPT-5.5**, **GPT-5.4**, **GPT-5.4 Mini**, and **Codex Mini** alongside local models like Darwin.
 - Improved model routing so choosing GPT-family models from a Darwin-default setup routes through authenticated `openai-codex` instead of hanging on the local backend.
 - Added natural-language cron drafting UI with freeform request input, examples, and autofill.
 - Added cron preview / validation foundation for vibe-style job creation.
@@ -24,6 +24,9 @@
 - Added an artifact shelf with create/open/delete flows and a dedicated artifact creation modal with optional AI follow-up assistance.
 - Added Setup Packs UI for one-click bootstrap prompts such as Obsidian Starter, ShareNote + Telegram flow, and memory sync guidance.
 - Added lightweight Preflight Validator cards plus setup pack run history for more transparent workflow readiness checks.
+- Added a main workspace tab switcher so users can alternate between Hermes chat and a live, embedded Paperclip work screen.
+- Added a read-only `/api/paperclip/status` probe and `PAPERCLIP_WEB_URL` package guidance for local Paperclip web app connections.
+- Updated the desktop install pack zip/docs so installed users know how to configure the live Paperclip tab.
 
 ---
 

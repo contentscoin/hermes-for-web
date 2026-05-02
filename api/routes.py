@@ -8,6 +8,8 @@ import queue
 import sys
 import threading
 import time
+import urllib.error
+import urllib.request
 import uuid
 from pathlib import Path
 from urllib.parse import parse_qs
@@ -32,6 +34,7 @@ from api.workspace import (
 )
 from api.upload import handle_upload
 from api.streaming import _sse, _run_agent_streaming, cancel_stream
+from api import facts as facts_store
 
 # Approval system (optional -- graceful fallback if agent not available)
 try:
@@ -138,6 +141,9 @@ def handle_get(handler, parsed) -> bool:
 
     if parsed.path == '/api/models':
         return j(handler, get_available_models())
+
+    if parsed.path == '/api/paperclip/status':
+        return _handle_paperclip_status(handler)
 
     if parsed.path == '/api/settings':
         settings = load_settings()
@@ -304,6 +310,12 @@ def handle_get(handler, parsed) -> bool:
     if parsed.path == '/api/memory':
         return _handle_memory_read(handler)
 
+    if parsed.path == '/api/facts':
+        return _handle_facts_read(handler, parsed)
+
+    if parsed.path == '/api/memory-candidates':
+        return _handle_memory_candidates_read(handler, parsed)
+
     # ── Profile API (GET) ──
     if parsed.path == '/api/profiles':
         from api.profiles import list_profiles_api, get_active_profile_name
@@ -327,7 +339,7 @@ def handle_post(handler, parsed) -> bool:
     body = read_body(handler)
 
     if parsed.path == '/api/session/new':
-        s = new_session(workspace=body.get('workspace'), model=body.get('model'))
+        s = new_session(workspace=body.get('workspace'), model=body.get('model'), profile=body.get('profile'))
         return j(handler, {'session': s.compact() | {'messages': s.messages}})
 
     if parsed.path == '/api/sessions/cleanup':
@@ -665,6 +677,33 @@ def _serve_static(handler, parsed):
     return True
 
 
+def _handle_paperclip_status(handler):
+    base_url = os.getenv('PAPERCLIP_WEB_URL', 'http://127.0.0.1:3100').rstrip('/')
+    health_url = f'{base_url}/api/health'
+    try:
+        req = urllib.request.Request(health_url, headers={'Accept': 'application/json'})
+        with urllib.request.urlopen(req, timeout=2) as resp:
+            raw = resp.read(65536).decode('utf-8', errors='replace')
+            try:
+                payload = json.loads(raw) if raw else {}
+            except json.JSONDecodeError:
+                payload = {'raw': raw[:500]}
+            return j(handler, {
+                'ok': 200 <= resp.status < 400,
+                'url': base_url,
+                'health_url': health_url,
+                'status': resp.status,
+                'paperclip': payload,
+            })
+    except Exception as exc:
+        return j(handler, {
+            'ok': False,
+            'url': base_url,
+            'health_url': health_url,
+            'error': str(exc),
+        })
+
+
 def _handle_session_export(handler, parsed):
     sid = parse_qs(parsed.query).get('session_id', [''])[0]
     if not sid: return bad(handler, 'session_id is required')
@@ -917,6 +956,8 @@ def _handle_chat_start(handler, body):
     attachments = [str(a) for a in (body.get('attachments') or [])][:20]
     workspace = str(Path(body.get('workspace') or s.workspace).expanduser().resolve())
     model = body.get('model') or s.model
+    profile = body.get('profile') or s.profile
+    s.profile = profile
     s.workspace = workspace; s.model = model; s.save()
     set_last_workspace(workspace)
     stream_id = uuid.uuid4().hex
@@ -939,12 +980,20 @@ def _handle_chat_sync(handler, body):
     if not msg: return j(handler, {'error': 'empty message'}, status=400)
     workspace = Path(body.get('workspace') or s.workspace).expanduser().resolve()
     s.workspace = str(workspace); s.model = body.get('model') or s.model
+    try:
+        from api.profiles import get_profile_home
+        _profile_home = str(get_profile_home(getattr(s, 'profile', None)))
+    except ImportError:
+        _profile_home = os.environ.get('HERMES_HOME', '')
     old_cwd = os.environ.get('TERMINAL_CWD')
     os.environ['TERMINAL_CWD'] = str(workspace)
     old_exec_ask = os.environ.get('HERMES_EXEC_ASK')
     old_session_key = os.environ.get('HERMES_SESSION_KEY')
+    old_hermes_home = os.environ.get('HERMES_HOME')
     os.environ['HERMES_EXEC_ASK'] = '1'
     os.environ['HERMES_SESSION_KEY'] = s.session_id
+    if _profile_home:
+        os.environ['HERMES_HOME'] = _profile_home
     try:
         from run_agent import AIAgent
         with CHAT_LOCK:
@@ -996,6 +1045,8 @@ def _handle_chat_sync(handler, body):
         else: os.environ['HERMES_EXEC_ASK'] = old_exec_ask
         if old_session_key is None: os.environ.pop('HERMES_SESSION_KEY', None)
         else: os.environ['HERMES_SESSION_KEY'] = old_session_key
+        if old_hermes_home is None: os.environ.pop('HERMES_HOME', None)
+        else: os.environ['HERMES_HOME'] = old_hermes_home
     s.messages = result.get('messages') or s.messages
     s.title = title_from(s.messages, s.title); s.save()
     # Sync to state.db for /insights (opt-in setting)
@@ -1336,3 +1387,84 @@ def _handle_session_import(handler, body):
             SESSIONS.popitem(last=False)
     s.save()
     return j(handler, {'ok': True, 'session': s.compact() | {'messages': s.messages}})
+
+
+def _handle_facts_read(handler, parsed):
+    qs = parse_qs(parsed.query)
+    try:
+        facts = facts_store.list_facts(
+            scope=qs.get('scope', [''])[0] or None,
+            scope_ref=qs.get('scope_ref', [''])[0] or None,
+            category=qs.get('category', [''])[0] or None,
+            query=qs.get('q', [''])[0] or qs.get('query', [''])[0] or None,
+            status=qs.get('status', ['active'])[0] or 'active',
+        )
+        return j(handler, {'facts': facts, 'summary': facts_store.store_summary()})
+    except Exception as e:
+        return bad(handler, str(e), 400)
+
+
+def _handle_memory_candidates_read(handler, parsed):
+    qs = parse_qs(parsed.query)
+    try:
+        candidates = facts_store.list_candidates(
+            status=qs.get('status', ['pending'])[0] or 'pending',
+            scope=qs.get('scope', [''])[0] or None,
+            scope_ref=qs.get('scope_ref', [''])[0] or None,
+        )
+        return j(handler, {'candidates': candidates, 'summary': facts_store.store_summary()})
+    except Exception as e:
+        return bad(handler, str(e), 400)
+
+
+def _handle_memory_candidate_create(handler, body):
+    try:
+        require(body, 'statement')
+        candidate = facts_store.create_candidate(
+            category=body.get('category', 'knowledge'),
+            scope=body.get('scope', 'global'),
+            scope_ref=body.get('scope_ref', 'default'),
+            statement=body.get('statement', ''),
+            source_session_id=body.get('source_session_id'),
+            source_message_ids=body.get('source_message_ids') or [],
+            confidence=body.get('confidence'),
+            reason=body.get('reason'),
+            sensitivity=body.get('sensitivity', 'internal'),
+            recommended_action=body.get('recommended_action', 'approve'),
+            metadata=body.get('metadata') or {},
+        )
+        return j(handler, {'ok': True, 'candidate': candidate, 'summary': facts_store.store_summary()})
+    except ValueError as e:
+        return bad(handler, str(e), 400)
+    except Exception as e:
+        return bad(handler, str(e), 500)
+
+
+def _handle_memory_candidate_approve(handler, body):
+    try:
+        candidate_id = body.get('candidate_id') or body.get('id')
+        if not candidate_id:
+            return bad(handler, 'candidate_id is required')
+        result = facts_store.approve_candidate(candidate_id, edited_statement=body.get('edited_statement'))
+        return j(handler, {'ok': True, **result, 'summary': facts_store.store_summary()})
+    except KeyError as e:
+        return bad(handler, str(e), 404)
+    except ValueError as e:
+        return bad(handler, str(e), 409)
+    except Exception as e:
+        return bad(handler, str(e), 500)
+
+
+def _handle_memory_candidate_reject(handler, body):
+    try:
+        candidate_id = body.get('candidate_id') or body.get('id')
+        if not candidate_id:
+            return bad(handler, 'candidate_id is required')
+        candidate = facts_store.reject_candidate(candidate_id, reason=body.get('reason'))
+        return j(handler, {'ok': True, 'candidate': candidate, 'summary': facts_store.store_summary()})
+    except KeyError as e:
+        return bad(handler, str(e), 404)
+    except ValueError as e:
+        return bad(handler, str(e), 409)
+    except Exception as e:
+        return bad(handler, str(e), 500)

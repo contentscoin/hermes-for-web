@@ -88,12 +88,14 @@ def get_active_profile_name() -> str:
 
 def get_active_hermes_home() -> Path:
     """Return the HERMES_HOME path for the currently active profile."""
-    if _active_profile == 'default':
+    return get_profile_home(_active_profile)
+
+
+def get_profile_home(name: str | None) -> Path:
+    """Return the HERMES_HOME path for the requested profile name."""
+    if not name or name == 'default':
         return _DEFAULT_HERMES_HOME
-    profile_dir = _DEFAULT_HERMES_HOME / 'profiles' / _active_profile
-    if profile_dir.is_dir():
-        return profile_dir
-    return _DEFAULT_HERMES_HOME
+    return _DEFAULT_HERMES_HOME / 'profiles' / name
 
 
 def _set_hermes_home(home: Path):

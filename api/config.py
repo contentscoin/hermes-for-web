@@ -205,7 +205,7 @@ def _discover_default_workspace() -> Path:
     return (STATE_DIR / 'workspace').resolve()
 
 DEFAULT_WORKSPACE = _discover_default_workspace()
-DEFAULT_MODEL     = os.getenv('HERMES_WEBUI_DEFAULT_MODEL', 'openai/gpt-5.4-mini')
+DEFAULT_MODEL     = os.getenv('HERMES_WEBUI_DEFAULT_MODEL', 'openai/gpt-5.5')
 
 # ── Startup diagnostics ───────────────────────────────────────────────────────
 def print_startup_config() -> None:
@@ -290,6 +290,7 @@ CLI_TOOLSETS = get_config().get('platform_toolsets', {}).get('cli', _DEFAULT_TOO
 
 # Hardcoded fallback models (used when no config.yaml or agent is available)
 _FALLBACK_MODELS = [
+    {'provider': 'OpenAI',    'id': 'openai/gpt-5.5',                   'label': 'GPT-5.5'},
     {'provider': 'OpenAI',    'id': 'openai/gpt-5.4',                   'label': 'GPT-5.4'},
     {'provider': 'OpenAI',    'id': 'openai/gpt-5.4-mini',              'label': 'GPT-5.4 Mini'},
     {'provider': 'OpenAI',    'id': 'openai/gpt-4o',                    'label': 'GPT-4o'},
@@ -322,6 +323,7 @@ _PROVIDER_MODELS = {
         {'id': 'claude-haiku-3-5',   'label': 'Claude Haiku 3.5'},
     ],
     'openai': [
+        {'id': 'gpt-5.5',      'label': 'GPT-5.5'},
         {'id': 'gpt-5.4',      'label': 'GPT-5.4'},
         {'id': 'gpt-5.4-mini', 'label': 'GPT-5.4 Mini'},
         {'id': 'gpt-4o',       'label': 'GPT-4o'},
@@ -329,6 +331,7 @@ _PROVIDER_MODELS = {
         {'id': 'o4-mini',      'label': 'o4-mini'},
     ],
     'openai-codex': [
+        {'id': 'gpt-5.5',           'label': 'GPT-5.5'},
         {'id': 'gpt-5.4',           'label': 'GPT-5.4'},
         {'id': 'gpt-5.4-mini',      'label': 'GPT-5.4 Mini'},
         {'id': 'codex-mini-latest', 'label': 'Codex Mini'},
@@ -408,7 +411,7 @@ def resolve_model_provider(model_id: str) -> tuple:
 
     auth_providers = set((auth_store.get('providers') or {}).keys()) | set((auth_store.get('credential_pool') or {}).keys())
 
-    openai_family = {'gpt-5.4', 'gpt-5.4-mini', 'gpt-4o', 'o3', 'o4-mini'}
+    openai_family = {'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-4o', 'o3', 'o4-mini'}
     codex_family = {'codex-mini-latest'}
     local_family_prefixes = ('Darwin-', 'darwin-', 'mlx-', 'local-')
     model_basename = os.path.basename(model_id) if model_id else ''

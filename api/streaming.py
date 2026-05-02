@@ -95,8 +95,8 @@ def _run_agent_streaming(session_id, msg_text, model, workspace, stream_id, atta
 
         # Resolve profile home for this agent run (snapshot at start)
         try:
-            from api.profiles import get_active_hermes_home
-            _profile_home = str(get_active_hermes_home())
+            from api.profiles import get_profile_home
+            _profile_home = str(get_profile_home(getattr(s, 'profile', None)))
         except ImportError:
             _profile_home = os.environ.get('HERMES_HOME', '')
 

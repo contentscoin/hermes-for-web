@@ -188,6 +188,7 @@ $('modelSelect').onchange=async()=>{
   localStorage.setItem('hermes-webui-model', selectedModel);
   await api('/api/session/update',{method:'POST',body:JSON.stringify({session_id:S.session.session_id,workspace:S.session.workspace,model:selectedModel})});
   S.session.model=selectedModel;syncTopbar();
+  if(typeof syncModelDrawer==='function') syncModelDrawer();
 };
 $('msg').addEventListener('input',()=>{
   autoResize();
@@ -324,8 +325,26 @@ function buildWorkflowPrompt(kind){
   if(kind==='generate-posting'){
     return lead + '이 대화를 /posting 가능한 브리프로 전환해줘. 핵심 주제, 메시지, 독자, 구조, 시각화 아이디어를 정리해줘.';
   }
+  if(kind==='generate-decision-report'){
+    return lead + '현재 대화와 작업 맥락을 바탕으로 Paperclip 반영 전용 Decision Report 초안을 작성해줘. 반드시 정본 `paperclip-ops-pack/templates/decision-report-template.md` 구조에 맞춰 1) 논의 주제 2) 배경 3) 검토 옵션 4) 추천안 5) 예상 반영 유형(comment / new issue / issue update) 6) 승인 상태(기본값: 미승인) 7) 승인 요청 문구를 정리해줘. 아직 Paperclip에는 반영하지 말고, hela 스타일로 summary → options → recommendation → next action 구조를 유지해줘.';
+  }
+  if(kind==='request-approval'){
+    return lead + '현재 논의에 대해 사용자가 바로 복사해서 보낼 수 있는 Paperclip 실행승인 문구를 4가지 범위로 짧게 작성해줘. comment only / issue create / issue update / full execution 으로 승인 범위가 나뉘도록 해줘. 아직 반영은 하지 말고 승인 문구만 제안해줘.';
+  }
+  if(kind==='reflect-paperclip-comment'){
+    return lead + '현재 세션에서 comment only 범위의 명시적 실행승인 문구가 실제로 존재하는지 먼저 확인하고, 확인된 경우에만 Decision Report Comment 반영안을 진행해줘. 순서는 반드시: 1) 승인 문구 재확인 2) 논의 요약 3) 최종 결정 4) comment 초안 또는 실제 comment 반영 5) comment id와 결과 보고. comment only 승인 문구가 세션에 없거나 모호하면 절대 반영하지 말고 보류 사유만 설명해줘.';
+  }
+  if(kind==='reflect-paperclip-issue'){
+    return lead + '현재 세션에서 issue create 범위의 명시적 실행승인 문구가 실제로 존재하는지 먼저 확인하고, 확인된 경우에만 신규 Executable Issue 생성안만 진행해줘. 순서는 반드시: 1) 승인 문구 재확인 2) 논의 요약 3) 최종 결정 4) 생성할 issue 구조 정리 5) 필요한 경우에만 신규 issue 실제 생성 6) identifier와 결과 보고. issue create 승인 문구가 세션에 없거나 모호하면 절대 반영하지 말고 보류 사유만 설명해줘.';
+  }
+  if(kind==='reflect-paperclip-full'){
+    return lead + '현재 세션에서 full execution 범위의 명시적 실행승인 문구가 실제로 존재하는지 먼저 확인하고, 확인된 경우에만 그 승인 범위 안에서 Paperclip 반영 실행안을 진행해줘. 순서는 반드시: 1) 승인 문구 재확인 2) 논의 요약 3) 최종 결정 4) 실행 항목 5) 필요한 경우에만 decision comment / new issue / issue update 실제 실행 6) 생성/수정된 identifier와 결과 보고. full execution 승인 문구가 세션에 없거나 모호하면 절대 반영하지 말고 보류 사유만 설명해줘.';
+  }
+  if(kind==='extract-memory-candidates'){
+    return lead + '현재 대화에서 장기적으로 유지할 가치가 있는 후보만 JSON 배열로 추출해줘. 필드는 category(decision/preference/pattern/knowledge/constraint), scope(global/company/project/telegram_group/workspace/profile), scope_ref, statement, source_session_id, source_message_ids, confidence(0~1), sensitivity(public/internal/confidential), recommended_action(approve/edit/reject/paperclip_draft_only), reason 을 포함해줘. 절대 memory tool, Paperclip, Telegram 전송을 실행하지 말고 JSON만 제공해줘. 아직 Paperclip에는 반영하지 않았습니다. 실행 승인 시에만 반영합니다.';
+  }
   if(kind==='save-memory'){
-    return lead + '현재 대화에서 장기적으로 유용한 사용자 선호, 환경 정보, workflow 규칙이 있다면 memory 또는 user profile 에 저장해줘. 저장한 항목도 짧게 요약해줘.';
+    return lead + '현재 대화에서 장기적으로 유용한 항목을 바로 memory에 저장하지 말고, Memory Candidate Inbox에 넣을 후보 JSON 배열로만 정리해줘. 승인 전에는 memory tool, Paperclip, Telegram을 실행하지 마. 아직 Paperclip에는 반영하지 않았습니다. 실행 승인 시에만 반영합니다.';
   }
   if(kind==='telegram-handoff'){
     return lead + '현재 작업을 텔레그램 구찌에서도 바로 이어갈 수 있도록 handoff summary 를 만들어줘. 핵심 맥락, 다음 액션, 기억해둘 사항을 간단히 정리하고 memory 저장이 필요하면 함께 반영해줘.';
@@ -333,19 +352,224 @@ function buildWorkflowPrompt(kind){
   return '';
 }
 
+function detectPaperclipApprovalScope(){
+  const msgs=(S&&S.messages)||[];
+  const patterns={
+    full:[/full execution/, /전체 반영/, /전부 반영/, /이 안으로 반영해/, /승인, 이 안으로 반영해/],
+    issue:[/issue create/, /이슈 생성 승인/, /이슈 만들어/, /issue 생성/],
+    comment:[/comment only/, /코멘트만/, /comment 승인/, /comment only 승인/],
+    generic:[/(^|\s)승인(,|\s|$)/, /반영해/, /실행해/],
+  };
+  let scope='none';
+  for(const m of msgs){
+    if(!m || m.role!=='user') continue;
+    const text=String(m.content||'').trim();
+    if(!text) continue;
+    if([/좋아/,/괜찮네/,/그 방향으로 보자/,/맞는 듯/,/오케이/].some(rx=>rx.test(text))) continue;
+    if(patterns.full.some(rx=>rx.test(text))) scope='full';
+    else if(patterns.issue.some(rx=>rx.test(text)) && scope!=='full') scope='issue';
+    else if(patterns.comment.some(rx=>rx.test(text)) && !['full','issue'].includes(scope)) scope='comment';
+    else if(patterns.generic.some(rx=>rx.test(text)) && scope==='none') scope='full';
+  }
+  return scope;
+}
+
+function hasExplicitPaperclipApproval(){
+  return detectPaperclipApprovalScope()!=='none';
+}
+
+function updatePaperclipApprovalUI(){
+  const scopedButtons=(kind)=>Array.from(document.querySelectorAll(`.artifact-action[data-workflow="${kind}"]`));
+  const btnComments=scopedButtons('reflect-paperclip-comment');
+  const btnIssues=scopedButtons('reflect-paperclip-issue');
+  const btnFulls=scopedButtons('reflect-paperclip-full');
+  const hints=[$('paperclipApprovalHint'), $('paperclipApprovalHintMain')].filter(Boolean);
+  if(!btnComments.length && !btnIssues.length && !btnFulls.length && !hints.length) return;
+  const scope=detectPaperclipApprovalScope();
+  const enableComment=['comment','issue','full'].includes(scope);
+  const enableIssue=['issue','full'].includes(scope);
+  const enableFull=scope==='full';
+  const setBtn=(btn, enabled, title)=>{
+    btn.disabled=!enabled;
+    btn.title=title;
+    btn.style.opacity=enabled ? '1' : '0.55';
+    btn.style.cursor=enabled ? 'pointer' : 'not-allowed';
+  };
+  btnComments.forEach(btn=>setBtn(btn, enableComment, enableComment ? `승인 범위 감지됨 (${scope}) — comment 반영 가능` : 'comment only 승인 후에만 활성화됩니다'));
+  btnIssues.forEach(btn=>setBtn(btn, enableIssue, enableIssue ? `승인 범위 감지됨 (${scope}) — issue 생성 가능` : 'issue create 승인 후에만 활성화됩니다'));
+  btnFulls.forEach(btn=>setBtn(btn, enableFull, enableFull ? 'full execution 승인 감지됨 — 전체 반영 가능' : 'full execution 승인 후에만 활성화됩니다'));
+  if(hints.length){
+    const map={
+      none:'아직 명시적 실행승인이 없습니다. 승인 전에는 Decision Report 초안까지만 진행합니다.',
+      comment:'comment only 승인이 감지되었습니다. Comment 반영만 활성화됩니다.',
+      issue:'issue create 승인이 감지되었습니다. Comment 반영과 Issue 생성이 활성화됩니다.',
+      full:'full execution 승인이 감지되었습니다. 모든 Paperclip 반영 버튼을 사용할 수 있습니다.',
+    };
+    hints.forEach(hint=>{ hint.textContent=map[scope]||map.none; });
+  }
+}
+
+function _paperclipWorkflowStoreKey(){
+  const sid=S.session&&S.session.session_id;
+  return sid?`hermes-webui-paperclip-history:${sid}`:'hermes-webui-paperclip-history:global';
+}
+function _loadPaperclipWorkflowHistory(){
+  try{return JSON.parse(localStorage.getItem(_paperclipWorkflowStoreKey())||'[]');}catch(e){return [];}
+}
+function _savePaperclipWorkflowHistory(items){
+  localStorage.setItem(_paperclipWorkflowStoreKey(), JSON.stringify(items.slice(0,12)));
+}
+function renderPaperclipWorkflowHistory(){
+  const wraps=[$('paperclipWorkflowHistory'), $('paperclipWorkflowHistoryPanel'), $('paperclipWorkflowHistoryMain')].filter(Boolean);
+  if(!wraps.length) return;
+  const items=_loadPaperclipWorkflowHistory();
+  if(!items.length){
+    wraps.forEach(w=>w.innerHTML='<div class="artifact-empty">아직 Paperclip workflow 기록이 없습니다.</div>');
+    return;
+  }
+  const html=items.map(item=>{
+    const scope=item.scope||'paperclip';
+    const status=item.status||'running';
+    return `<div class="artifact-item"><div class="artifact-item-main"><div class="artifact-item-title"><span class="paperclip-badge paperclip-scope-${esc(scope)}">${esc(scope)}</span> <span class="paperclip-badge paperclip-status-${esc(status)}">${esc(status)}</span></div><div class="artifact-item-meta">${esc(item.identifier||'identifier pending')} · ${esc(item.updated_at||item.created_at||'')}</div></div><div class="artifact-item-actions">${item.artifact_path?`<button class="artifact-mini-btn" onclick="openArtifactPath('${esc(item.artifact_path)}')">열기</button>`:''}</div></div>`;
+  }).join('');
+  wraps.forEach(w=>w.innerHTML=html);
+}
+function renderPaperclipConsoleSummary(){
+  const hints=[$('paperclipConsoleHint'), $('paperclipConsoleHintMain')].filter(Boolean);
+  if(!hints.length) return;
+  const scope=typeof detectPaperclipApprovalScope==='function' ? detectPaperclipApprovalScope() : 'none';
+  const hist=_loadPaperclipWorkflowHistory();
+  const latest=hist[0]||null;
+  const latestText=latest ? `${latest.scope||'paperclip'} / ${latest.status||'running'} / ${latest.identifier||'identifier pending'}` : '최근 반영 이력 없음';
+  const scopeMap={
+    none:'승인 없음',
+    comment:'comment only 승인',
+    issue:'issue create 승인',
+    full:'full execution 승인',
+  };
+  hints.forEach(hint=>{ hint.textContent=`현재 승인 상태: ${scopeMap[scope]||scope} · 최근 실행: ${latestText}`; });
+  const btnTg=$('btnConsoleTelegram');
+  const btnMem=$('btnConsoleMemory');
+  const latestArtifact=latest&&latest.artifact_path ? latest.artifact_path : null;
+  if(btnTg){
+    btnTg.disabled=!latestArtifact;
+    btnTg.style.opacity=latestArtifact?'1':'0.55';
+    btnTg.style.cursor=latestArtifact?'pointer':'not-allowed';
+    btnTg.title=latestArtifact?`최근 결과 Artifact를 Telegram handoff로 전달`:'최근 Artifact가 있어야 사용 가능합니다';
+  }
+  if(btnMem){
+    btnMem.disabled=!latestArtifact;
+    btnMem.style.opacity=latestArtifact?'1':'0.55';
+    btnMem.style.cursor=latestArtifact?'pointer':'not-allowed';
+    btnMem.title=latestArtifact?`최근 결과 Artifact를 memory 흐름으로 전달`:'최근 Artifact가 있어야 사용 가능합니다';
+  }
+}
+
+function runPaperclipConsoleAction(action){
+  const hist=_loadPaperclipWorkflowHistory();
+  const latest=hist[0]||null;
+  if(!latest || !latest.artifact_path){
+    showToast('최근 Paperclip 결과 Artifact가 없습니다');
+    return;
+  }
+  if(action==='telegram') return runArtifactWorkflow(latest.artifact_path,'telegram');
+  if(action==='memory') return runArtifactWorkflow(latest.artifact_path,'memory');
+}
+function recordPaperclipWorkflowRun(scope, artifactPath){
+  const items=_loadPaperclipWorkflowHistory();
+  items.unshift({scope,status:'running',artifact_path:artifactPath||'',created_at:new Date().toISOString()});
+  _savePaperclipWorkflowHistory(items);
+  renderPaperclipWorkflowHistory();
+  renderPaperclipConsoleSummary();
+}
+function finalizePaperclipWorkflowRun(scope, info){
+  const items=_loadPaperclipWorkflowHistory();
+  const idx=items.findIndex(x=>x.scope===scope && x.status==='running');
+  if(idx<0) return;
+  items[idx]={...items[idx], ...info, status:'done', updated_at:new Date().toISOString()};
+  _savePaperclipWorkflowHistory(items);
+  renderPaperclipWorkflowHistory();
+  renderPaperclipConsoleSummary();
+}
+
+async function createPaperclipResultArtifact(kind){
+  if(!S.session) return null;
+  const stamp=new Date().toISOString().replace(/[:.]/g,'-');
+  const names={
+    'reflect-paperclip-comment':`paperclip-comment-result-${stamp}.md`,
+    'reflect-paperclip-issue':`paperclip-issue-result-${stamp}.md`,
+    'reflect-paperclip-full':`paperclip-full-result-${stamp}.md`,
+  };
+  const labels={
+    'reflect-paperclip-comment':'Comment Only',
+    'reflect-paperclip-issue':'Issue Create',
+    'reflect-paperclip-full':'Full Execution',
+  };
+  const name=names[kind];
+  if(!name) return null;
+  const relPath=S.currentDir==='.'?name:(S.currentDir+'/'+name);
+  const content=`# Paperclip ${labels[kind]||'Execution'} Result\n\n- created_at: ${new Date().toISOString()}\n- session_id: ${(S.session&&S.session.session_id)||''}\n- approval_scope: ${labels[kind]||kind}\n\n## Summary\n\n## Decision\n\n## Execution items\n\n## Result\n- identifiers:\n- comments:\n- status:\n`;
+  try{
+    await api('/api/file/create',{method:'POST',body:JSON.stringify({session_id:S.session.session_id,path:relPath,content})});
+    registerArtifact({name,path:relPath,type:'paperclip-result'});
+    await loadDir(S.currentDir);
+    if(typeof openFile==='function') openFile(relPath);
+    return relPath;
+  }catch(e){
+    console.warn('paperclip artifact create failed', e);
+    return null;
+  }
+}
+
 document.querySelectorAll('.artifact-action[data-workflow]').forEach(btn=>{
   btn.onclick=async()=>{
     const kind=btn.dataset.workflow;
-    const text=buildWorkflowPrompt(kind);
+    const gatedKinds=['reflect-paperclip-comment','reflect-paperclip-issue','reflect-paperclip-full'];
+    if(gatedKinds.includes(kind)){
+      const scope=detectPaperclipApprovalScope();
+      const allowed = (
+        (kind==='reflect-paperclip-comment' && ['comment','issue','full'].includes(scope)) ||
+        (kind==='reflect-paperclip-issue' && ['issue','full'].includes(scope)) ||
+        (kind==='reflect-paperclip-full' && scope==='full')
+      );
+      if(!allowed){
+        updatePaperclipApprovalUI();
+        showToast('현재 승인 범위로는 이 Paperclip 반영 버튼을 사용할 수 없습니다');
+        return;
+      }
+    }
+    const artifactPath=gatedKinds.includes(kind) ? await createPaperclipResultArtifact(kind) : null;
+    let text=buildWorkflowPrompt(kind);
+    if(artifactPath){
+      const scopeLabelMap={
+        'reflect-paperclip-comment':'comment',
+        'reflect-paperclip-issue':'issue',
+        'reflect-paperclip-full':'full',
+      };
+      recordPaperclipWorkflowRun(scopeLabelMap[kind]||kind, artifactPath);
+      text += ` 반영 결과는 워크스페이스의 ${artifactPath} 파일에도 정리해줘. 최소한 summary, approval scope, generated/updated identifiers, final status 를 파일에 남겨줘.`;
+    }
     if(!text)return;
     if(S.busy){showToast('현재 작업이 끝난 뒤 다시 시도해 주세요');return;}
     $('msg').value=text;
     autoResize();
     $('msg').focus();
-    showToast('워크플로우 작업을 바로 실행합니다');
+    if(document.body.classList.contains('paperclip-main-mode') && typeof switchMainView==='function') switchMainView('chat');
+    showToast(gatedKinds.includes(kind) ? 'Paperclip 반영 결과용 아티팩트를 만들고 워크플로우를 실행합니다' : '워크플로우 작업을 바로 실행합니다');
     await send();
+    setTimeout(updatePaperclipApprovalUI, 100);
   };
 });
+setInterval(updatePaperclipApprovalUI, 1200);
+setTimeout(updatePaperclipApprovalUI, 50);
+setTimeout(renderPaperclipWorkflowHistory, 50);
+setTimeout(renderPaperclipConsoleSummary, 50);
+setTimeout(()=>{
+  const tg=$('btnConsoleTelegram');
+  const mem=$('btnConsoleMemory');
+  if(tg) tg.onclick=()=>runPaperclipConsoleAction('telegram');
+  if(mem) mem.onclick=()=>runPaperclipConsoleAction('memory');
+}, 50);
 
 function _artifactStoreKey(){
   const sid=S.session&&S.session.session_id;
@@ -365,10 +589,54 @@ function registerArtifact(item){
   _recentArtifactPath=item.path;
   renderArtifactList();
 }
+function renameArtifactRecord(oldPath,newPath,newName){
+  const items=_loadArtifacts().map(x=>x.path===oldPath?{...x,path:newPath,name:newName||newPath.split('/').pop()}:x);
+  _saveArtifacts(items);
+  if(_recentArtifactPath===oldPath) _recentArtifactPath=newPath;
+  renderArtifactList();
+}
 function removeArtifactRecord(path){
   const items=_loadArtifacts().filter(x=>x.path!==path);
   _saveArtifacts(items);
   renderArtifactList();
+}
+function _paperclipResultPrefixFromPath(path){
+  const file=(path||'').split('/').pop()||'';
+  if(file.startsWith('paperclip-comment-result-')) return 'comment';
+  if(file.startsWith('paperclip-issue-result-')) return 'issue';
+  if(file.startsWith('paperclip-full-result-')) return 'full';
+  return null;
+}
+async function maybeRenameRecentPaperclipArtifactFromMessages(){
+  if(!S.session || !_recentArtifactPath) return null;
+  const scope=_paperclipResultPrefixFromPath(_recentArtifactPath);
+  if(!scope) return null;
+  const lastAssistant=[...(S.messages||[])].reverse().find(m=>m&&m.role==='assistant'&&typeof m.content==='string'&&m.content.trim());
+  const text=lastAssistant&&lastAssistant.content||'';
+  const match=text.match(/\b([A-Z]{2,10}-\d+)\b/);
+  if(!match) return null;
+  const identifier=match[1];
+  const parts=_recentArtifactPath.split('/');
+  const oldName=parts.pop()||'';
+  const dir=parts.length?parts.join('/')+'/':'';
+  const newName=`paperclip-${identifier}-${scope}-result.md`;
+  if(oldName===newName){
+    finalizePaperclipWorkflowRun(scope,{identifier,artifact_path:_recentArtifactPath});
+    return {identifier,path:_recentArtifactPath,renamed:false};
+  }
+  const newPath=dir+newName;
+  try{
+    await api('/api/file/rename',{method:'POST',body:JSON.stringify({session_id:S.session.session_id,path:_recentArtifactPath,new_name:newName})});
+    renameArtifactRecord(_recentArtifactPath,newPath,newName);
+    await loadDir(S.currentDir);
+    if(typeof openFile==='function') openFile(newPath);
+    finalizePaperclipWorkflowRun(scope,{identifier,artifact_path:newPath});
+    return {identifier,path:newPath,renamed:true};
+  }catch(e){
+    console.warn('paperclip artifact rename failed', e);
+    finalizePaperclipWorkflowRun(scope,{identifier,artifact_path:_recentArtifactPath,error:String(e&&e.message||e)});
+    return {identifier,path:_recentArtifactPath,renamed:false,error:String(e&&e.message||e)};
+  }
 }
 function buildArtifactActionPrompt(path, action){
   if(action==='share') return `워크스페이스의 ${path} 파일을 기준으로 ShareNote 공유용으로 다듬어줘. 공유 전 체크포인트와 ShareNote 링크 생성 흐름도 함께 안내해줘.`;
@@ -388,7 +656,7 @@ async function runArtifactWorkflow(path, action){
   await send();
 }
 function renderArtifactList(){
-  const wraps=[$('artifactList'), $('artifactListSidebar')].filter(Boolean);
+  const wraps=[$('artifactList'), $('artifactListSidebar'), $('paperclipArtifactListPanel'), $('paperclipArtifactListMain')].filter(Boolean);
   if(!wraps.length)return;
   const items=_loadArtifacts();
   if(!items.length){
@@ -534,7 +802,8 @@ const SETUP_PACK_TEMPLATES={
   'hermes-full-install':'Hermes 를 처음 쓰는 사용자를 위한 Full Hermes Install pack 을 실행해줘. https://github.com/NousResearch/hermes-agent 와 https://github.com/reallygood83/hermes-for-web 를 기준으로, Hermes Agent 설치부터 필요한 의존성, 기본 설정, Telegram 연결 가능 여부 점검, WebUI 실행 준비까지 한 번에 진행해줘. 이미 설치된 항목은 재사용하고, 초보자도 이해할 수 있게 단계와 결과를 요약해줘.',
   'webui-only-install':'이미 Hermes Agent 를 쓰는 사용자를 위한 WebUI-only Install pack 을 실행해줘. https://github.com/reallygood83/hermes-for-web 를 설치 또는 업데이트하고, localhost:8788 기준 실행 준비, Cherry Blossom 기본 테마, Assistant Name, Setup Packs, Artifact/Workspace 흐름까지 점검해줘.',
   'last30days':'last30days research pack 을 설치/점검해줘. 사용자가 최근 30일간 X/Reddit 기반 반응 조사를 쉽게 시작할 수 있도록 last30days 사용법, 소스 선택법(x/reddit/both), 대표 예시, 필수 전제 조건을 정리하고 가능한 환경 점검을 진행해줘.',
-  'autoresearch':'AutoResearch pack 을 설치/점검해줘. 사용자가 조사 질문을 넣으면 리서치 흐름을 반복 실행하거나 심화 탐색할 수 있도록 기본 구조, 추천 워크플로우, 필요한 도구/전제 조건, 결과 정리 방식을 설명하고 가능한 환경 점검을 진행해줘.'
+  'autoresearch':'AutoResearch pack 을 설치/점검해줘. 사용자가 조사 질문을 넣으면 리서치 흐름을 반복 실행하거나 심화 탐색할 수 있도록 기본 구조, 추천 워크플로우, 필요한 도구/전제 조건, 결과 정리 방식을 설명하고 가능한 환경 점검을 진행해줘.',
+  'paperclip-ops':'Paperclip Ops Pack 을 설치/점검해줘. Telegram ↔ Hermes ↔ Paperclip 실운영 흐름에서 Decision Report 템플릿 자동화, 승인 문구 판정 규칙, 반영 전 체크리스트, 반영 후 기록 형식을 정리하고 가능한 문서/템플릿/가이드를 실제 파일로 생성·업데이트해줘. 정본은 `paperclip-ops-pack/` 아래에 정리하고, 반영 전에 반드시 실행승인 받는 구조를 hard gate 로 유지해줘.'
 };
 const SETUP_PACK_DESCRIPTIONS={
   'obsidian-starter':'Obsidian 중심 note workflow 를 시작하는 기본 세팅 팩',
@@ -545,7 +814,8 @@ const SETUP_PACK_DESCRIPTIONS={
   'hermes-full-install':'Hermes Agent 설치부터 Telegram/WebUI 준비까지 한 번에 시작하는 풀 설치 팩',
   'webui-only-install':'이미 Hermes 사용자라면 WebUI 만 빠르게 붙이는 설치 팩',
   'last30days':'최근 30일간 X/Reddit 반응 조사를 빠르게 시작하는 연구 팩',
-  'autoresearch':'질문을 반복 조사/심화 탐색 workflow 로 키우는 리서치 팩'
+  'autoresearch':'질문을 반복 조사/심화 탐색 workflow 로 키우는 리서치 팩',
+  'paperclip-ops':'Decision Report 정본 템플릿, 승인 판정 규칙, reflection 체크리스트를 묶고 실행승인 전 반영 금지를 hard gate 로 고정하는 운영 팩'
 };
 const SETUP_PACK_DETAILS={
   'obsidian-starter':{title:'Obsidian Starter',who:'Obsidian 중심으로 Hermes 를 시작하려는 사용자',outcome:['노트 workflow 점검','Obsidian 친화 markdown 흐름 정리','기본 note 작성 스타트']},
@@ -556,7 +826,8 @@ const SETUP_PACK_DETAILS={
   'hermes-full-install':{title:'Full Hermes Install',who:'Hermes 를 처음 설치하는 완전 초보 사용자',outcome:['Hermes Agent 설치 흐름 시작','Telegram / WebUI 연결 준비','초보자용 설치 요약 확보']},
   'webui-only-install':{title:'WebUI-only Install',who:'이미 Hermes Agent 를 쓰고 있고 WebUI 만 붙이고 싶은 사용자',outcome:['WebUI 설치/업데이트','localhost:8788 실행 준비','테마/팩/아티팩트 기본 점검']},
   'last30days':{title:'last30days',who:'최근 30일간 X/Reddit 반응 조사를 빠르게 하고 싶은 사용자',outcome:['x/reddit/both 사용법 이해','반응 조사 워크플로우 시작','리서치 입력 예시 확보']},
-  'autoresearch':{title:'AutoResearch',who:'질문 하나를 반복 조사/심화 탐색 흐름으로 키우고 싶은 사용자',outcome:['조사 워크플로우 틀 확보','다음 탐색 포인트 설계','note/brief 로 연결하기 쉬운 출력 확보']}
+  'autoresearch':{title:'AutoResearch',who:'질문 하나를 반복 조사/심화 탐색 흐름으로 키우고 싶은 사용자',outcome:['조사 워크플로우 틀 확보','다음 탐색 포인트 설계','note/brief 로 연결하기 쉬운 출력 확보']},
+  'paperclip-ops':{title:'Paperclip Ops',who:'Telegram 논의와 Paperclip 반영 사이 승인/기록 규칙을 고정하고 싶은 운영자',outcome:['paperclip-ops-pack 정본 문서 세트 확보','Decision Report / comment / issue / update 템플릿 분리','승인 문구 판정 규칙과 pre/post reflection 체크리스트 고정','실행승인 전 반영 금지 hard gate 유지']}
 };
 document.querySelectorAll('.setup-pack').forEach(btn=>{
   btn.dataset.desc = SETUP_PACK_DESCRIPTIONS[btn.dataset.pack] || '이 setup pack 이 하는 일을 설명합니다.';
@@ -750,6 +1021,7 @@ async function applyBotName(){
   try{const s=await api('/api/settings');window._sendKey=s.send_key||'enter';window._showTokenUsage=!!s.show_token_usage;window._showCliSessions=!!s.show_cli_sessions;const _theme=s.theme||'dark';document.documentElement.dataset.theme=_theme;localStorage.setItem('hermes-theme',_theme);}catch(e){window._sendKey='enter';window._showTokenUsage=false;window._showCliSessions=false;}
   // Fetch active profile
   try{const p=await api('/api/profile/active');S.activeProfile=p.name||'default';}catch(e){S.activeProfile='default';}
+  if(window.ensureMultiAgentState) ensureMultiAgentState();
   // Update profile chip label immediately
   const profileLabel=$('profileChipLabel');
   if(profileLabel) profileLabel.textContent=S.activeProfile||'default';
@@ -757,6 +1029,7 @@ async function applyBotName(){
   await populateModelDropdown();
   await applyBotName();
   await loadPersonalizationCard();
+  if(window.ensureMultiAgentState) ensureMultiAgentState();
   if($('btnCloseOnboarding')) $('btnCloseOnboarding').onclick=closeOnboardingModal;
   maybeShowOnboardingModal();
   // Restore last-used model preference
@@ -766,16 +1039,20 @@ async function applyBotName(){
     // If the value didn't take (model not in list), clear the bad pref
     if($('modelSelect').value!==savedModel) localStorage.removeItem('hermes-webui-model');
   }
+  syncTopbar();
+  if(typeof initQuickbarAndScroll==='function') initQuickbarAndScroll();
+  if(typeof initModelDrawer==='function') initModelDrawer();
   // Pre-load workspace list so sidebar name is correct from first render
   await loadWorkspaceList();
   _initResizePanels();
   const saved=localStorage.getItem('hermes-webui-session');
   if(saved){
-    try{await loadSession(saved);await renderSessionList();await checkInflightOnBoot(saved);return;}
+    try{await loadSession(saved);await renderSessionList();await checkInflightOnBoot(saved);if(window.ensureMultiAgentState) ensureMultiAgentState();return;}
     catch(e){localStorage.removeItem('hermes-webui-session');}
   }
   // no saved session - show empty state, wait for user to hit +
   $('emptyState').style.display='';
   await renderSessionList();
+  if(window.ensureMultiAgentState) ensureMultiAgentState();
 })();
 

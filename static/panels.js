@@ -13,11 +13,17 @@ async function switchPanel(name) {
   if (name === 'tasks') await loadCrons();
   if (name === 'skills') await loadSkills();
   if (name === 'memory') await loadMemory();
+  if (name === 'facts' && typeof loadMemoryInbox === 'function') await loadMemoryInbox();
   if (name === 'workspaces') await loadWorkspacesPanel();
   if (name === 'profiles') await loadProfilesPanel();
   if (name === 'todos') loadTodos();
   if (name === 'artifacts' && typeof renderArtifactList === 'function') renderArtifactList();
   if (name === 'setup' && typeof renderSetupPackHistory === 'function') renderSetupPackHistory();
+  if (name === 'console') {
+    if (typeof renderPaperclipWorkflowHistory === 'function') renderPaperclipWorkflowHistory();
+    if (typeof renderArtifactList === 'function') renderArtifactList();
+    if (typeof renderPaperclipConsoleSummary === 'function') renderPaperclipConsoleSummary();
+  }
   if (name === 'checks' && typeof renderPreflightResult === 'function') renderPreflightResult('note');
 }
 
