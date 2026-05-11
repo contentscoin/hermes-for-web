@@ -20,6 +20,12 @@ async function switchPanel(name) {
   if (name === 'artifacts' && typeof renderArtifactList === 'function') renderArtifactList();
   if (name === 'setup' && typeof renderSetupPackHistory === 'function') renderSetupPackHistory();
   if (name === 'console') {
+    // The sidebar item is labeled "Paperclip", so opening it should also
+    // activate the main live Paperclip workspace. Previously it only opened
+    // the narrow console sidebar, leaving the central iframe panel hidden;
+    // users saw a connected status with a black/blank work area.
+    if (typeof switchMainView === 'function') switchMainView('paperclip');
+    if (typeof initPaperclipLiveView === 'function') await initPaperclipLiveView();
     if (typeof renderPaperclipWorkflowHistory === 'function') renderPaperclipWorkflowHistory();
     if (typeof renderArtifactList === 'function') renderArtifactList();
     if (typeof renderPaperclipConsoleSummary === 'function') renderPaperclipConsoleSummary();

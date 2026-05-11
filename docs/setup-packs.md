@@ -83,7 +83,45 @@ Operator promise:
 - It must keep the canonical source under `paperclip-ops-pack/`.
 - After execution, it must record identifiers and final state cleanly.
 
-## 5. AutoResearch Pack
+## 5. last30days Research Pack
+
+Goal:
+Help users start a recent-30-days public reaction scan across X/Twitter and Reddit with a clear source choice and evidence standard.
+
+Typical scope:
+- define the recent 30-day date window
+- choose source mode: `x`, `reddit`, or `both`
+- prepare keyword, hashtag, account, subreddit, and exclusion strategy
+- collect representative public reactions without overclaiming sentiment
+- separate X fast-reaction signals from Reddit deeper discussion signals
+- produce executive brief, source table, marketing insight, product discovery memo, or risk scan
+
+Expected outputs:
+- `last30days-pack/README.md`
+- `last30days-pack/templates/query-template.md`
+- `last30days-pack/templates/output-template.md`
+- `last30days-pack/workflows/default-last30days-loop.md`
+- `last30days-pack/checklists/source-selection-checklist.md`
+- `last30days-pack/scripts/check_last30days_env.py`
+
+Operator promise:
+- The pack must not claim broad public sentiment from a small or biased sample.
+- It must disclose source access limitations, API/search limitations, and sampling bias.
+- It must keep raw credentials out of reports and logs.
+- It must stop for explicit approval before Paperclip reflection, Telegram delivery, or publishing.
+
+Recommended starter prompt:
+
+```text
+last30days로 조사해줘.
+주제: [조사 주제]
+소스: both
+기간: 최근 30일
+목표: 반응 패턴, 반복 불만, 호의적 포인트, 대표 인용 후보, 다음 액션 정리
+출력: 한국어 executive brief + source table
+```
+
+## 6. AutoResearch Pack
 
 Goal:
 Turn an open-ended research question into a repeatable broad-scan → synthesis → deep-dive workflow.
@@ -102,12 +140,22 @@ Expected outputs:
 - `autoresearch-pack/templates/research-output-template.md`
 - `autoresearch-pack/workflows/default-research-loop.md`
 - `autoresearch-pack/checklists/deepening-checklist.md`
+- `autoresearch-pack/scripts/check_autoresearch_env.py`
+
+Recommended loop decisions:
+- `stop`: enough evidence and next action are clear
+- `deepen`: run a focused deep dive on one angle
+- `broaden`: expand source, market, region, or period
+- `verify`: test contrary evidence or numeric claims
+- `convert`: turn findings into note, brief, post, memo, or draft
+- `approval wait`: pause before Paperclip/Telegram/publishing
 
 Operator promise:
 - The pack must not claim certainty beyond the available evidence.
-- It must separate source-backed facts from interpretation.
-- It must state unknowns and recommended next questions.
-- If a result needs Paperclip reflection, it must stop for explicit execution approval first.
+- It must separate source-backed facts from interpretation, hypotheses, and unknowns.
+- It must state source limitations and recommended next questions.
+- It must leave the user with a next-loop choice or next action.
+- If a result needs Paperclip reflection, Telegram delivery, or publishing, it must stop for explicit execution approval first.
 
 ## UI expectation
 

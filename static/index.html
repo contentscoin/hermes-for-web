@@ -9,7 +9,7 @@
 <link rel="apple-touch-icon" href="/static/favicon.png?v=20260406c">
 <link rel="shortcut icon" href="/static/favicon.png?v=20260406c">
 <script>(function(){var t=localStorage.getItem('hermes-theme');if(t&&t!=='dark')document.documentElement.dataset.theme=t;})()</script>
-<link rel="stylesheet" href="/static/style.css?v=20260502-paperclip-live1">
+<link rel="stylesheet" href="/static/style.css?v=20260507-desktop-comfort1">
   <!-- Prism.js syntax highlighting (loaded async, non-blocking) -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css" integrity="sha384-wFjoQjtV1y5jVHbt0p35Ui8aV8GVpEZkyF99OXWqP/eNJDU93D3Ugxkoyh6Y2I4A" crossorigin="anonymous">
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-core.min.js" integrity="sha384-MXybTpajaBV0AkcBaCPT4KIvo0FzoCiWXgcihYsw4FUkEz0Pv3JGV6tk2G8vJtDc" crossorigin="anonymous" defer></script>
@@ -36,7 +36,7 @@
       <button class="nav-tab nav-primary active" data-panel="chat" data-label="채팅" onclick="switchPanel('chat')" title="채팅">&#128172;<span>채팅</span></button>
       <button class="nav-tab nav-primary" data-panel="workspaces" data-label="공간" onclick="switchPanel('workspaces')" title="작업공간">&#128193;<span>공간</span></button>
       <button class="nav-tab nav-primary" data-panel="artifacts" data-label="아티팩트" onclick="switchPanel('artifacts')" title="아티팩트">&#128230;<span>산출물</span></button>
-      <button class="nav-tab nav-primary" data-panel="console" data-label="콘솔" onclick="switchPanel('console')" title="Paperclip Console">&#128206;<span>Paperclip</span></button>
+      <button class="nav-tab nav-primary" data-panel="console" data-label="콘솔" onclick="switchPanel('console');switchMainView('paperclip')" title="Paperclip Console">&#128206;<span>Paperclip</span></button>
       <div class="nav-section-label nav-section-secondary">More</div>
       <button class="nav-tab nav-secondary" data-panel="tasks" data-label="작업" onclick="switchPanel('tasks')" title="예약 작업">&#128197;<span>예약</span></button>
       <button class="nav-tab nav-secondary" data-panel="todos" data-label="할 일" onclick="switchPanel('todos')" title="현재 할 일 목록">&#128221;<span>할 일</span></button>
@@ -760,14 +760,14 @@
   </button>
 </nav>
 <div class="toast" id="toast"></div>
-<script src="/static/ui.js?v=20260502-paperclip-live1"></script>
+<script src="/static/ui.js?v=20260511-paperclip-embed-fix1"></script>
 <script src="/static/workspace.js?v=20260406a"></script>
 <script src="/static/sessions.js?v=20260406a"></script>
 <script src="/static/commands.js?v=20260406a"></script>
 <script src="/static/messages.js?v=20260406a"></script>
-<script src="/static/panels.js?v=20260501-facts1"></script>
+<script src="/static/panels.js?v=20260511-paperclip-embed-fix1"></script>
 <script src="/static/facts.js?v=20260501-facts1"></script>
 <script src="/static/multiagent.js?v=20260426-ceo4"></script>
-<script src="/static/boot.js?v=20260502-main-tabs1"></script>
+<script src="/static/boot.js?v=20260503-autoresearch-pack1"></script>
 </body>
 </html>
