@@ -5,17 +5,17 @@
     {id:'dev',label:'Dev',profile:'paperclip-dev',placeholder:'구현/테스트/디버깅을 물어보세요'},
     {id:'mkt',label:'Mkt',profile:'paperclip-mkt',placeholder:'메시지/브랜딩/마케팅을 물어보세요'},
   ];
-  const TELEGRAM_IDENTITIES={
-    'default': {name:'Hela', handle:'@Paxclawbot'},
-    'paperclip-plan': {name:'Mendy', handle:'@Paxclawplanbot'},
-    'paperclip-dev': {name:'Clay', handle:'@Paxclawdevbot'},
-    'paperclip-mkt': {name:'Jay', handle:'@Paxclawmktbot'},
+  const ROLE_IDENTITIES={
+    'default': {name:'Hela', role:'CEO / executive coordination'},
+    'paperclip-plan': {name:'Plan', role:'Planning / roadmap'},
+    'paperclip-dev': {name:'Dev', role:'Development / validation'},
+    'paperclip-mkt': {name:'Mkt', role:'Marketing / messaging'},
   };
   const LANE_INVOCATIONS={
-    hela:['hela','@paxclawbot'],
-    plan:['mendy','@paxclawplanbot','plan','planning','pm','기획'],
-    dev:['clay','@paxclawdevbot','dev','development','개발'],
-    mkt:['jay','@paxclawmktbot','mkt','marketing','마케팅','브랜딩','콘텐츠'],
+    hela:['hela','ceo','executive','총괄','조율'],
+    plan:['plan','planning','pm','planner','기획','우선순위','로드맵'],
+    dev:['dev','development','developer','engineering','개발','구현','테스트'],
+    mkt:['mkt','marketing','brand','branding','마케팅','브랜딩','콘텐츠'],
   };
 
   function ensureMultiAgentState(){
@@ -86,16 +86,16 @@
       const profileOptions=profiles.map(p=>`<option value="${escapeAttr(p.name)}" ${p.name===lane.profile?'selected':''}>${esc(p.name)}</option>`).join('');
       const laneModel=lane.model||$('modelSelect')?.value||'';
       const messagesHtml=renderLaneMessagesHtml(lane);
-      const telegramIdentity=TELEGRAM_IDENTITIES[lane.profile]||null;
-      const telegramMeta=telegramIdentity
-        ? `<div class="lane-telegram">Telegram: <strong>${esc(telegramIdentity.name)}</strong> <span>${esc(telegramIdentity.handle)}</span></div>`
-        : `<div class="lane-telegram">Telegram: <span>연결 정보 없음</span></div>`;
+      const roleIdentity=ROLE_IDENTITIES[lane.profile]||null;
+      const roleMeta=roleIdentity
+        ? `<div class="lane-telegram">Role: <strong>${esc(roleIdentity.name)}</strong> <span>${esc(roleIdentity.role)}</span></div>`
+        : `<div class="lane-telegram">Role: <span>custom profile</span></div>`;
       card.innerHTML=`
         <div class="lane-head">
           <div>
             <div class="lane-title">${esc(lane.label)}</div>
             <div class="lane-meta">profile <strong>${esc(lane.profile)}</strong></div>
-            ${telegramMeta}
+            ${roleMeta}
           </div>
           <div class="lane-head-actions">
             <button class="lane-btn" data-lane-reset="${lane.id}">새 세션</button>
