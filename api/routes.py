@@ -145,6 +145,11 @@ def handle_get(handler, parsed) -> bool:
     if parsed.path == '/api/paperclip/status':
         return _handle_paperclip_status(handler)
 
+    if parsed.path == '/api/opencrab/status':
+        from api.opencrab_connector import build_opencrab_status
+        from api.config import _get_config_path
+        return j(handler, build_opencrab_status(config_path=_get_config_path()))
+
     if parsed.path == '/api/settings':
         settings = load_settings()
         # Never expose the stored password hash to clients
@@ -443,6 +448,10 @@ def handle_post(handler, parsed) -> bool:
 
     if parsed.path == '/api/file/create-dir':
         return _handle_create_dir(handler, body)
+
+    # ── OpenCrab Connector (POST) ──
+    if parsed.path == '/api/opencrab/ingest-package':
+        return _handle_opencrab_ingest_package(handler, body)
 
     # ── Workspace management (POST) ──
     if parsed.path == '/api/workspaces/add':
@@ -1206,6 +1215,27 @@ def _handle_create_dir(handler, body):
         target.mkdir(parents=True)
         return j(handler, {'ok': True, 'path': str(target.relative_to(Path(s.workspace)))})
     except (ValueError, PermissionError, OSError) as e: return bad(handler, str(e))
+
+
+def _handle_opencrab_ingest_package(handler, body):
+    source_path = str(body.get('source_path') or '').strip()
+    workspace = str(body.get('workspace') or DEFAULT_WORKSPACE).strip()
+    if not source_path:
+        return bad(handler, 'source_path is required')
+    try:
+        workspace_path = Path(workspace).expanduser().resolve()
+        source = safe_resolve(workspace_path, source_path)
+        from api.opencrab_connector import create_ingest_package
+        package = create_ingest_package(
+            source_path=source,
+            output_root=STATE_DIR / 'opencrab-ingest-packages',
+            workspace=workspace_path,
+        )
+        return j(handler, package)
+    except FileNotFoundError as e:
+        return bad(handler, str(e), 404)
+    except (ValueError, PermissionError, OSError) as e:
+        return bad(handler, str(e), 400)
 
 
 def _handle_workspace_add(handler, body):

@@ -45,6 +45,7 @@
       <button class="nav-tab nav-secondary" data-panel="facts" data-label="후보" onclick="switchPanel('facts')" title="Memory Candidate Inbox">&#128229;<span>후보</span></button>
       <button class="nav-tab nav-secondary" data-panel="profiles" data-label="프로필" onclick="switchPanel('profiles')" title="에이전트 프로필"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><span>프로필</span></button>
       <button class="nav-tab nav-secondary" data-panel="setup" data-label="설치팩" onclick="switchPanel('setup')" title="Setup Packs">&#129520;<span>설치</span></button>
+      <button class="nav-tab nav-secondary" data-panel="opencrab" data-label="OpenCrab" onclick="switchPanel('opencrab')" title="OpenCrab Connector">🦀<span>OpenCrab</span></button>
       <button class="nav-tab nav-secondary" data-panel="checks" data-label="점검" onclick="switchPanel('checks')" title="Preflight Validator">&#128737;<span>점검</span></button>
     </div>
     <!-- Chat panel -->
@@ -198,6 +199,20 @@
       <div class="setup-pack-help" id="setupPackHelpSidebar">팩 위에 마우스를 올리면 설명이 보입니다. 클릭하면 해당 환경/흐름을 점검하고 설치·설정 작업을 시작합니다.</div>
       <div class="setup-pack-detail" id="setupPackDetailSidebar"></div>
       <div class="skills-list" id="setupPackHistorySidebar"><div style="padding:12px;color:var(--muted);font-size:12px">아직 실행한 setup pack 이 없습니다.</div></div>
+    </div>
+    <div class="panel-view" id="panelOpencrab">
+      <div class="sidebar-section" style="padding-bottom:4px;display:flex;align-items:center;justify-content:space-between">
+        <div style="font-size:11px;color:var(--muted)">OpenCrab Connector</div>
+        <button class="cron-btn run" style="padding:3px 8px;font-size:10px" onclick="loadOpenCrabPanel()">새로고침</button>
+      </div>
+      <div class="setup-pack-help">OpenCrab cloud MCP, Paperclip plugin, LocalCrab ingest package 상태를 한 곳에서 확인합니다. raw key는 표시하지 않습니다.</div>
+      <div class="artifact-list" id="opencrabStatusPanel"><div style="padding:12px;color:var(--muted);font-size:12px">상태를 불러오는 중...</div></div>
+      <div style="padding:10px 12px 4px;font-size:11px;color:var(--muted)">LocalCrab ingest package</div>
+      <div style="padding:0 12px 8px">
+        <input id="opencrabIngestSource" placeholder="작업공간 기준 파일 경로: 예) docs/source.md" style="width:100%;background:rgba(255,255,255,.05);border:1px solid var(--border2);border-radius:6px;color:var(--text);padding:6px 8px;font-size:12px;outline:none;box-sizing:border-box;margin-bottom:6px">
+        <button class="cron-btn run" style="width:100%;padding:6px 8px" onclick="createOpenCrabIngestPackage()">초안 패키지 생성</button>
+        <div id="opencrabIngestResult" class="setup-pack-help" style="margin-top:6px">Neo4j write / OpenCrab sync 없이 검토용 패키지만 생성합니다.</div>
+      </div>
     </div>
     <div class="panel-view" id="panelConsole">
       <div class="sidebar-section" style="padding-bottom:4px;display:flex;align-items:center;justify-content:space-between">
@@ -765,7 +780,7 @@
 <script src="/static/sessions.js?v=20260406a"></script>
 <script src="/static/commands.js?v=20260406a"></script>
 <script src="/static/messages.js?v=20260406a"></script>
-<script src="/static/panels.js?v=20260511-paperclip-embed-fix1"></script>
+<script src="/static/panels.js?v=20260517-opencrab-connector1"></script>
 <script src="/static/facts.js?v=20260501-facts1"></script>
 <script src="/static/multiagent.js?v=20260426-ceo4"></script>
 <script src="/static/boot.js?v=20260503-autoresearch-pack1"></script>

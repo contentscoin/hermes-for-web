@@ -19,6 +19,7 @@ async function switchPanel(name) {
   if (name === 'todos') loadTodos();
   if (name === 'artifacts' && typeof renderArtifactList === 'function') renderArtifactList();
   if (name === 'setup' && typeof renderSetupPackHistory === 'function') renderSetupPackHistory();
+  if (name === 'opencrab' && typeof loadOpenCrabPanel === 'function') await loadOpenCrabPanel();
   if (name === 'console') {
     // The sidebar item is labeled "Paperclip", so opening it should also
     // activate the main live Paperclip workspace. Previously it only opened
@@ -31,6 +32,57 @@ async function switchPanel(name) {
     if (typeof renderPaperclipConsoleSummary === 'function') renderPaperclipConsoleSummary();
   }
   if (name === 'checks' && typeof renderPreflightResult === 'function') renderPreflightResult('note');
+}
+
+// ── OpenCrab Connector panel ──
+function _openCrabBadge(ok, label){
+  const cls=ok?'active':'error';
+  return `<span class="cron-status ${cls}">${esc(label)}</span>`;
+}
+
+async function loadOpenCrabPanel(){
+  const box=$('opencrabStatusPanel');
+  if(!box)return;
+  box.innerHTML='<div style="padding:12px;color:var(--muted);font-size:12px">OpenCrab 상태 확인 중...</div>';
+  try{
+    const data=await api('/api/opencrab/status');
+    const hermes=data.hermes_mcp||{};
+    const paper=data.paperclip_plugin||{};
+    const local=data.localcrab||{};
+    const guards=data.guards||{};
+    box.innerHTML=`
+      <div class="cron-item">
+        <div class="cron-header"><span class="cron-name">Hermes MCP</span>${_openCrabBadge(!!hermes.configured, hermes.configured?'configured':'missing')}</div>
+        <div class="cron-body" style="display:block"><div class="cron-schedule">toolset: ${esc(hermes.toolset||'opencrab')}</div><div class="cron-prompt">endpoint: ${esc(hermes.endpoint||'not configured')}</div></div>
+      </div>
+      <div class="cron-item">
+        <div class="cron-header"><span class="cron-name">Paperclip plugin</span>${_openCrabBadge(!!paper.plugin_ready, paper.plugin_ready?'ready':'check')}</div>
+        <div class="cron-body" style="display:block"><div class="cron-schedule">reachable: ${esc(String(!!paper.reachable))} · tools: ${esc(paper.tools_registered||0)}</div><div class="cron-prompt">${esc(paper.error||paper.plugin_error||paper.tools_error||paper.url||'ok')}</div></div>
+      </div>
+      <div class="cron-item">
+        <div class="cron-header"><span class="cron-name">LocalCrab</span>${_openCrabBadge(!!local.installed, local.installed?'installed':'pending')}</div>
+        <div class="cron-body" style="display:block"><div class="cron-schedule">runtime: ${esc(local.runtime||'pending')}</div><div class="cron-prompt">path: ${esc(local.path||'')}</div></div>
+      </div>
+      <div class="setup-pack-help">Guards: approval=${esc(String(!!guards.ingest_apply_requires_approval))}, neo4j_write=${esc(String(!!guards.neo4j_write_enabled))}, opencrab_sync=${esc(String(!!guards.opencrab_sync_enabled))}, raw_key_exposed=${esc(String(!!guards.raw_key_exposed))}</div>`;
+  }catch(e){
+    box.innerHTML=`<div style="padding:12px;color:var(--accent);font-size:12px">OpenCrab 상태 확인 실패: ${esc(e.message)}</div>`;
+  }
+}
+
+async function createOpenCrabIngestPackage(){
+  const input=$('opencrabIngestSource');
+  const out=$('opencrabIngestResult');
+  const source=(input&&input.value||'').trim();
+  if(!out)return;
+  if(!source){out.textContent='source file path를 입력하세요.';return;}
+  out.textContent='검토용 ingest package 생성 중...';
+  try{
+    const workspace=(S.session&&S.session.workspace)||localStorage.getItem('hermes-last-workspace')||'';
+    const data=await api('/api/opencrab/ingest-package',{method:'POST',body:JSON.stringify({source_path:source,workspace})});
+    out.innerHTML=`생성됨: <code>${esc(data.package_id)}</code><br>경로: <code>${esc(data.package_dir)}</code><br>chunks: ${esc((data.counts||{}).chunks||0)} · approval_required: ${esc(String(!!data.approval_required))}`;
+  }catch(e){
+    out.textContent='생성 실패: '+e.message;
+  }
 }
 
 // ── Cron panel ──
