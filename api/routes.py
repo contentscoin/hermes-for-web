@@ -469,6 +469,9 @@ def handle_post(handler, parsed) -> bool:
     if parsed.path == '/api/research-intake/execution-plan':
         return _handle_research_intake_execution_plan(handler, body)
 
+    if parsed.path == '/api/research-intake/approval-prompt':
+        return _handle_research_intake_approval_prompt(handler, body)
+
     # ── Workspace management (POST) ──
     if parsed.path == '/api/workspaces/add':
         return _handle_workspace_add(handler, body)
@@ -1560,6 +1563,103 @@ def _handle_research_intake_execution_plan(handler, body):
             'requires_final_tool_execution': True,
             'external_mutations': plan['external_mutations'],
             'next': plan['next'],
+        }))
+    except FileNotFoundError as e:
+        return bad(handler, str(e), 404)
+    except (ValueError, PermissionError, OSError, json.JSONDecodeError) as e:
+        return bad(handler, str(e), 400)
+    except Exception as e:
+        return bad(handler, str(e), 500)
+
+
+def _handle_research_intake_approval_prompt(handler, body):
+    try:
+        package_dir = _safe_research_intake_package_dir(str(body.get('package_id') or body.get('package_dir') or ''))
+        report = _research_intake_execution_report_payload(package_dir)
+        if not report:
+            return bad(handler, 'execution_report is required before final approval prompt', 409)
+        plan = report.get('execution_plan') or {}
+        allowed_actions = set(plan.get('approved_actions') or [])
+        requested = body.get('actions') or list(allowed_actions)
+        if isinstance(requested, str):
+            requested = [requested]
+        supported = {'opencrab_sync', 'neo4j_write', 'paperclip_reflection'}
+        requested_actions = [a for a in requested if a in supported and a in allowed_actions]
+        blocked_actions = [a for a in requested if a in supported and a not in allowed_actions]
+        if not requested_actions:
+            return bad(handler, 'no requested actions are approved for final execution', 409)
+        approval_phrase = 'FINAL_EXECUTE_RESEARCH_INTAKE'
+        requires_paperclip = 'paperclip_reflection' in requested_actions
+        prompt_lines = [
+            '# Research Intake Final Execution Approval Prompt',
+            '',
+            f"Package: {plan.get('package_id') or package_dir.name}",
+            '',
+            '## Requested final actions',
+            *(f"- {action}" for action in requested_actions),
+            '',
+            '## Blocked actions',
+            *(f"- {action}" for action in blocked_actions),
+            '',
+            '## Approval phrase',
+            f"Type exactly: {approval_phrase}",
+            '',
+            '## Safety',
+            '- This prompt does not execute OpenCrab sync, Neo4j write, or Paperclip reflection.',
+            '- external_mutations_performed: []',
+        ]
+        if requires_paperclip:
+            prompt_lines.extend(['- Paperclip reflection requires separate explicit approval before reflection.'])
+        prompt_lines.extend(['', 'Review the execution report before granting final tool execution approval.'])
+        prompt_text = '\n'.join(prompt_lines) + '\n'
+        payload = {
+            'package_id': plan.get('package_id') or package_dir.name,
+            'status': 'approval_prompt_ready',
+            'approval_phrase': approval_phrase,
+            'requested_actions': requested_actions,
+            'blocked_actions': blocked_actions,
+            'approver': str(body.get('approver') or 'webui-user'),
+            'created_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+            'requires_final_tool_execution': True,
+            'requires_paperclip_reflection_approval': requires_paperclip,
+            'external_mutations_performed': [],
+            'external_mutations': {
+                'opencrab_sync': False,
+                'neo4j_write': False,
+                'paperclip_reflection': False,
+            },
+            'prompt': prompt_text,
+            'source_execution_report_path': report.get('execution_report_path'),
+        }
+        prompt_md = package_dir / 'promotion' / 'final_execution_approval_prompt.md'
+        prompt_json = package_dir / 'promotion' / 'final_execution_approval_prompt.json'
+        prompt_md.parent.mkdir(parents=True, exist_ok=True)
+        prompt_md.write_text(prompt_text, encoding='utf-8')
+        prompt_json.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+        manifest_path = package_dir / 'manifest.json'
+        manifest = json.loads(manifest_path.read_text(encoding='utf-8')) if manifest_path.exists() else {}
+        manifest['final_execution_approval_prompt'] = {
+            'status': payload['status'],
+            'prompt_path': str(prompt_md),
+            'prompt_json_path': str(prompt_json),
+            'requires_final_tool_execution': True,
+        }
+        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+        from api.opencrab_connector import redact_opencrab_endpoint
+        return j(handler, redact_opencrab_endpoint({
+            'ok': True,
+            'package_id': payload['package_id'],
+            'package_dir': str(package_dir),
+            'status': payload['status'],
+            'approval_phrase': approval_phrase,
+            'requested_actions': requested_actions,
+            'blocked_actions': blocked_actions,
+            'prompt': prompt_text,
+            'prompt_path': str(prompt_md),
+            'prompt_json_path': str(prompt_json),
+            'requires_final_tool_execution': True,
+            'requires_paperclip_reflection_approval': requires_paperclip,
+            'external_mutations': payload['external_mutations'],
         }))
     except FileNotFoundError as e:
         return bad(handler, str(e), 404)

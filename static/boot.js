@@ -1076,6 +1076,8 @@ function _researchIntakeSetApprovalEnabled(enabled){
   if(execBtn) execBtn.disabled=!enabled;
   const reportBtn=$('researchIntakeFinalExecutionReport');
   if(reportBtn) reportBtn.disabled=!enabled;
+  const promptBtn=$('researchIntakeFinalApprovalPrompt');
+  if(promptBtn) promptBtn.disabled=!enabled;
 }
 function _researchIntakeRenderReview(data){
   const panel=$('researchIntakeReviewPanel');
@@ -1179,6 +1181,31 @@ async function loadResearchIntakeExecutionReport(packageIdOrDir){
     return null;
   }
 }
+async function createResearchIntakeFinalApprovalPrompt(){
+  const packageId=_researchIntakeCurrentPackage;
+  if(!packageId){_researchIntakeSetResult('먼저 최종 실행 decision report를 생성하세요.', true);return null;}
+  _researchIntakeSetResult('최종 실행 승인 요청 문구 생성 중... 실제 반영은 하지 않습니다.', false);
+  try{
+    const res=await fetch(new URL('/api/research-intake/approval-prompt',location.origin).href,{
+      method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+        package_id:packageId,
+        actions:['opencrab_sync','neo4j_write','paperclip_reflection'],
+        approver:'webui-user'
+      })
+    });
+    const data=await res.json();
+    if(!res.ok||!data.ok) throw new Error(data.error||'approval prompt failed');
+    const panel=$('researchIntakeReviewPanel');
+    if(panel){
+      panel.innerHTML=`<div class="research-intake-final-report"><strong>최종 실행 승인 요청 문구</strong><div>type exactly: ${esc(data.approval_phrase||'FINAL_EXECUTE_RESEARCH_INTAKE')} · external mutations disabled</div><pre>${esc(data.prompt||'approval prompt unavailable')}</pre></div>`;
+    }
+    _researchIntakeSetResult('최종 실행 승인 요청 문구 생성 완료 · 아직 외부 반영 없음', false);
+    return data;
+  }catch(e){
+    _researchIntakeSetResult('최종 실행 승인 요청 문구 생성 실패: '+(e.message||e), true);
+    return null;
+  }
+}
 async function createResearchIntakeExecutionPlan(){
   const packageId=_researchIntakeCurrentPackage;
   if(!packageId){_researchIntakeSetResult('먼저 승인된 review package를 선택하세요.', true);return;}
@@ -1205,4 +1232,5 @@ window.createResearchIntakeImageDraft=createResearchIntakeImageDraft;
 window.loadResearchIntakeReview=loadResearchIntakeReview;
 window.approveResearchIntakePromotion=approveResearchIntakePromotion;
 window.loadResearchIntakeExecutionReport=loadResearchIntakeExecutionReport;
+window.createResearchIntakeFinalApprovalPrompt=createResearchIntakeFinalApprovalPrompt;
 window.createResearchIntakeExecutionPlan=createResearchIntakeExecutionPlan;

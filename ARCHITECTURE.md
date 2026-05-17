@@ -1605,3 +1605,8 @@ The Research Intake WebUI now separates human review approval from execution. `P
 ### Research Intake final execution decision report
 
 `GET /api/research-intake/execution-report` returns the generated `promotion/execution_report.md` plus its `promotion/execution_plan.json` metadata for display before any final tool execution. `GET /api/research-intake/review` also includes `execution_report` when present so the OpenCrab panel can render the final decision report alongside the visual evidence review. This is a read-only display surface; OpenCrab sync, Neo4j write, and Paperclip reflection remain disabled until a separate execution endpoint and explicit approval are added.
+
+
+### Research Intake final execution approval prompt
+
+`POST /api/research-intake/approval-prompt` is a read-only final approval artifact generator. It requires an existing `promotion/execution_report.md` and `promotion/execution_plan.json`, filters requested actions against the plan's approved actions, and writes `promotion/final_execution_approval_prompt.md` plus `.json`. The prompt includes the literal phrase `FINAL_EXECUTE_RESEARCH_INTAKE`, the requested actions, blocked actions, and the Paperclip-specific separate-approval warning when `paperclip_reflection` is requested. It performs no OpenCrab sync, Neo4j write, or Paperclip reflection.

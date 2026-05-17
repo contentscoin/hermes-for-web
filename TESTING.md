@@ -1750,3 +1750,8 @@ Promotion approval is covered by `tests/test_research_intake_webui.py`: it verif
 ### Research Intake final decision report checks
 
 The Research Intake WebUI tests verify `GET /api/research-intake/execution-report`, inclusion of `execution_report` in the review payload, and the `최종 실행 decision report` UI button. Smoke testing should create a draft, record promotion approval, create an execution plan, load the final report, and verify that all external mutation flags are still false.
+
+
+### Research Intake final approval prompt checks
+
+`tests/test_research_intake_webui.py` verifies the final approval prompt gate: it rejects packages without an execution report, writes `final_execution_approval_prompt.md/json` without mutation, preserves all external mutation flags as false, and exposes the WebUI `최종 실행 승인 요청 문구` button. Smoke testing should run the staged flow through execution report, then call `/api/research-intake/approval-prompt` and confirm the prompt contains `FINAL_EXECUTE_RESEARCH_INTAKE`.

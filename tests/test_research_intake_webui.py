@@ -17,6 +17,7 @@ def test_research_intake_routes_are_registered():
     assert "/api/research-intake/approve-promotion" in routes
     assert "/api/research-intake/execution-plan" in routes
     assert "/api/research-intake/execution-report" in routes
+    assert "/api/research-intake/approval-prompt" in routes
     assert "_handle_research_intake_image_draft" in routes
     assert "_handle_research_intake_review" in routes
 
@@ -307,3 +308,80 @@ def test_research_intake_final_execution_report_ui_controls_exist():
     assert "function loadResearchIntakeExecutionReport" in boot
     assert "/api/research-intake/execution-report" in boot
     assert "최종 실행 decision report" in html + boot
+
+
+def test_research_intake_approval_prompt_requires_execution_report(tmp_path, monkeypatch):
+    import api.routes as routes
+
+    package_root = tmp_path / "research-intake-packages"
+    package_dir = package_root / "research-intake-test-package"
+    package_dir.mkdir(parents=True)
+    (package_dir / "manifest.json").write_text(json.dumps({
+        "package_id": "research-intake-test-package",
+        "status": "approved_for_promotion",
+    }), encoding="utf-8")
+
+    monkeypatch.setattr(routes, "STATE_DIR", tmp_path)
+    handler = DummyHandler()
+    routes._handle_research_intake_approval_prompt(handler, {
+        "package_id": "research-intake-test-package",
+    })
+
+    payload = handler.json_payload()
+    assert handler.status == 409
+    assert "execution_report" in payload["error"]
+
+
+def test_research_intake_approval_prompt_writes_read_only_prompt_without_mutation(tmp_path, monkeypatch):
+    import api.routes as routes
+
+    package_root = tmp_path / "research-intake-packages"
+    package_dir = package_root / "research-intake-test-package"
+    (package_dir / "promotion").mkdir(parents=True)
+    report = "# Research Intake Execution Plan\n\nFinal tool execution approval is still required before any external mutation.\n"
+    (package_dir / "promotion" / "execution_report.md").write_text(report, encoding="utf-8")
+    (package_dir / "promotion" / "execution_plan.json").write_text(json.dumps({
+        "package_id": "research-intake-test-package",
+        "status": "execution_plan_ready",
+        "approved_actions": ["opencrab_sync", "neo4j_write", "paperclip_reflection"],
+        "blocked_actions": [],
+        "requires_final_tool_execution": True,
+        "external_mutations_performed": [],
+        "external_mutations": {"opencrab_sync": False, "neo4j_write": False, "paperclip_reflection": False},
+    }), encoding="utf-8")
+    (package_dir / "manifest.json").write_text(json.dumps({
+        "package_id": "research-intake-test-package",
+        "status": "approved_for_promotion",
+    }), encoding="utf-8")
+
+    monkeypatch.setattr(routes, "STATE_DIR", tmp_path)
+    handler = DummyHandler()
+    routes._handle_research_intake_approval_prompt(handler, {
+        "package_id": "research-intake-test-package",
+        "actions": ["opencrab_sync", "paperclip_reflection"],
+        "approver": "test-user",
+    })
+
+    payload = handler.json_payload()
+    assert handler.status == 200
+    assert payload["ok"] is True
+    assert payload["status"] == "approval_prompt_ready"
+    assert payload["approval_phrase"] == "FINAL_EXECUTE_RESEARCH_INTAKE"
+    assert payload["requested_actions"] == ["opencrab_sync", "paperclip_reflection"]
+    assert payload["external_mutations"] == {"opencrab_sync": False, "neo4j_write": False, "paperclip_reflection": False}
+    assert payload["requires_final_tool_execution"] is True
+    assert payload["requires_paperclip_reflection_approval"] is True
+    prompt = (package_dir / "promotion" / "final_execution_approval_prompt.md").read_text(encoding="utf-8")
+    assert "FINAL_EXECUTE_RESEARCH_INTAKE" in prompt
+    assert "Paperclip reflection requires separate explicit approval" in prompt
+    decision = json.loads((package_dir / "promotion" / "final_execution_approval_prompt.json").read_text(encoding="utf-8"))
+    assert decision["external_mutations_performed"] == []
+
+
+def test_research_intake_final_execution_approval_prompt_ui_controls_exist():
+    html = read("static/index.html")
+    boot = read("static/boot.js")
+    assert "researchIntakeFinalApprovalPrompt" in html
+    assert "function createResearchIntakeFinalApprovalPrompt" in boot
+    assert "/api/research-intake/approval-prompt" in boot
+    assert "최종 실행 승인 요청 문구" in html + boot
