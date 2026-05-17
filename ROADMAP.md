@@ -344,3 +344,8 @@ Community-requested enhancements tracked from GitHub issues. All shipped.
 ### Completed: approval-gated Research Intake promotion record
 
 Research Intake image drafts can now be marked `approved_for_promotion` from the WebUI without applying to OpenCrab, Neo4j, or Paperclip. Remaining future work is an explicit execution-approval flow that consumes these approved packages and performs selected external mutations only after a separate approval. LocalCrab pending has been replaced with a draft-package-builder-ready status in the connector card.
+
+
+### Completed: explicit Research Intake execution plan
+
+Research Intake promotion now has a second gate that produces an execution plan/report only after the package is `approved_for_promotion` and the explicit phrase `EXECUTE_RESEARCH_INTAKE_PROMOTION` is supplied. This still does not execute OpenCrab sync, Neo4j write, or Paperclip reflection; final tool execution remains a future separately approved step.

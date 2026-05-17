@@ -15,6 +15,7 @@ def test_research_intake_routes_are_registered():
     assert "/api/research-intake/image-draft" in routes
     assert "/api/research-intake/review" in routes
     assert "/api/research-intake/approve-promotion" in routes
+    assert "/api/research-intake/execution-plan" in routes
     assert "_handle_research_intake_image_draft" in routes
     assert "_handle_research_intake_review" in routes
 
@@ -154,3 +155,82 @@ def test_research_intake_promotion_ui_controls_exist():
     assert "/api/research-intake/approve-promotion" in boot
     assert "승인 기록" in html + boot
     assert "promotion_decision" in boot
+
+
+def test_research_intake_execution_plan_requires_promotion_approval(tmp_path, monkeypatch):
+    import api.routes as routes
+
+    package_root = tmp_path / "research-intake-packages"
+    package_dir = package_root / "research-intake-test-package"
+    (package_dir / "review").mkdir(parents=True)
+    (package_dir / "review" / "visual_evidence_review.md").write_text("# Visual Evidence Review\n", encoding="utf-8")
+    (package_dir / "manifest.json").write_text(json.dumps({
+        "package_id": "research-intake-test-package",
+        "status": "draft",
+    }), encoding="utf-8")
+
+    monkeypatch.setattr(routes, "STATE_DIR", tmp_path)
+    handler = DummyHandler()
+    routes._handle_research_intake_execution_plan(handler, {
+        "package_id": "research-intake-test-package",
+        "actions": ["opencrab_sync"],
+        "execution_approval": "EXECUTE_RESEARCH_INTAKE_PROMOTION",
+    })
+
+    payload = handler.json_payload()
+    assert handler.status == 409
+    assert "approved_for_promotion" in payload["error"]
+
+
+def test_research_intake_execution_plan_records_explicit_plan_without_mutation(tmp_path, monkeypatch):
+    import api.routes as routes
+
+    package_root = tmp_path / "research-intake-packages"
+    package_dir = package_root / "research-intake-test-package"
+    (package_dir / "review").mkdir(parents=True)
+    (package_dir / "promotion").mkdir(parents=True)
+    (package_dir / "review" / "visual_evidence_review.md").write_text("# Visual Evidence Review\n", encoding="utf-8")
+    (package_dir / "promotion" / "approval_decision.json").write_text(json.dumps({
+        "package_id": "research-intake-test-package",
+        "approved": True,
+        "status": "approved_for_promotion",
+        "approved_actions": ["opencrab_sync", "neo4j_write"],
+        "external_mutations_performed": [],
+    }), encoding="utf-8")
+    (package_dir / "manifest.json").write_text(json.dumps({
+        "package_id": "research-intake-test-package",
+        "status": "approved_for_promotion",
+        "counts": {"claims": 2, "nodes": 2, "evidence": 3},
+    }), encoding="utf-8")
+
+    monkeypatch.setattr(routes, "STATE_DIR", tmp_path)
+    handler = DummyHandler()
+    routes._handle_research_intake_execution_plan(handler, {
+        "package_id": "research-intake-test-package",
+        "actions": ["opencrab_sync", "neo4j_write", "paperclip_reflection"],
+        "execution_approval": "EXECUTE_RESEARCH_INTAKE_PROMOTION",
+        "approver": "test-user",
+    })
+
+    payload = handler.json_payload()
+    assert handler.status == 200
+    assert payload["ok"] is True
+    assert payload["status"] == "execution_plan_ready"
+    assert payload["external_mutations"] == {"opencrab_sync": False, "neo4j_write": False, "paperclip_reflection": False}
+    assert payload["requires_final_tool_execution"] is True
+    assert payload["approved_actions"] == ["opencrab_sync", "neo4j_write"]
+    assert payload["blocked_actions"] == ["paperclip_reflection"]
+    plan = json.loads((package_dir / "promotion" / "execution_plan.json").read_text(encoding="utf-8"))
+    assert plan["status"] == "execution_plan_ready"
+    assert plan["external_mutations_performed"] == []
+    assert plan["requires_final_tool_execution"] is True
+    assert "OpenCrab" in (package_dir / "promotion" / "execution_report.md").read_text(encoding="utf-8")
+
+
+def test_research_intake_execution_plan_ui_controls_exist():
+    html = read("static/index.html")
+    boot = read("static/boot.js")
+    assert "researchIntakeExecutionPlan" in html
+    assert "function createResearchIntakeExecutionPlan" in boot
+    assert "/api/research-intake/execution-plan" in boot
+    assert "EXECUTE_RESEARCH_INTAKE_PROMOTION" in boot

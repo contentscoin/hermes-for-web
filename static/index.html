@@ -221,6 +221,7 @@
         <label><input type="checkbox" id="researchIntakeRunOcr"> macOS Vision OCR 실행</label>
         <button class="cron-btn run" style="width:100%;padding:6px 8px" onclick="createResearchIntakeImageDraft()">이미지 draft package 생성</button>
         <button id="researchIntakeApprovePromotion" class="cron-btn" style="width:100%;padding:6px 8px;margin-top:6px" onclick="approveResearchIntakePromotion()" disabled title="review package 생성 후 승인 기록만 남깁니다">승인 기록</button>
+        <button id="researchIntakeExecutionPlan" class="cron-btn" style="width:100%;padding:6px 8px;margin-top:6px" onclick="createResearchIntakeExecutionPlan()" disabled title="승인된 package에 대해 실행 계획만 만들고 외부 반영은 하지 않습니다">실행 계획 생성</button>
         <div id="researchIntakeResult" class="setup-pack-help">OpenCrab sync / Neo4j write / Paperclip reflection 없이 review package만 생성합니다.</div>
         <div id="researchIntakeReviewPanel" class="research-intake-review"><div class="setup-pack-help">생성 후 visual evidence review가 여기에 표시됩니다.</div></div>
       </div>

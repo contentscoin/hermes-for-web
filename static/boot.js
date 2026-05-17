@@ -1072,6 +1072,8 @@ function _researchIntakeSetResult(message, isError){
 function _researchIntakeSetApprovalEnabled(enabled){
   const btn=$('researchIntakeApprovePromotion');
   if(btn) btn.disabled=!enabled;
+  const execBtn=$('researchIntakeExecutionPlan');
+  if(execBtn) execBtn.disabled=!enabled;
 }
 function _researchIntakeRenderReview(data){
   const panel=$('researchIntakeReviewPanel');
@@ -1152,6 +1154,28 @@ async function approveResearchIntakePromotion(){
     _researchIntakeSetResult('승인 기록 실패: '+(e.message||e), true);
   }
 }
+async function createResearchIntakeExecutionPlan(){
+  const packageId=_researchIntakeCurrentPackage;
+  if(!packageId){_researchIntakeSetResult('먼저 승인된 review package를 선택하세요.', true);return;}
+  _researchIntakeSetResult('실행 계획 생성 중... OpenCrab/Neo4j/Paperclip 실제 반영은 하지 않습니다.', false);
+  try{
+    const res=await fetch(new URL('/api/research-intake/execution-plan',location.origin).href,{
+      method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+        package_id:packageId,
+        actions:['opencrab_sync','neo4j_write','paperclip_reflection'],
+        execution_approval:'EXECUTE_RESEARCH_INTAKE_PROMOTION',
+        approver:'webui-user'
+      })
+    });
+    const data=await res.json();
+    if(!res.ok||!data.ok) throw new Error(data.error||'execution plan failed');
+    _researchIntakeSetResult(`실행 계획 준비: ${data.status} · final tool execution approval 필요 · external mutations: disabled`, false);
+    await loadResearchIntakeReview(data.package_id||packageId);
+  }catch(e){
+    _researchIntakeSetResult('실행 계획 생성 실패: '+(e.message||e), true);
+  }
+}
 window.createResearchIntakeImageDraft=createResearchIntakeImageDraft;
 window.loadResearchIntakeReview=loadResearchIntakeReview;
 window.approveResearchIntakePromotion=approveResearchIntakePromotion;
+window.createResearchIntakeExecutionPlan=createResearchIntakeExecutionPlan;

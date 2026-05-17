@@ -1740,3 +1740,8 @@ Each has automated API-level tests in `tests/test_sprint{N}.py`.
 ### Research Intake promotion / LocalCrab checks
 
 Promotion approval is covered by `tests/test_research_intake_webui.py`: it verifies that approval writes only `promotion/approval_decision.json`, returns all external mutation flags as false, exposes the existing `promotion_decision` through the review endpoint, and requires a separate execution approval. The same test file checks that LocalCrab no longer reports a generic pending runtime when the draft package builders are available.
+
+
+### Research Intake execution plan checks
+
+`tests/test_research_intake_webui.py` covers the explicit execution plan gate. It verifies that draft packages are rejected until `approved_for_promotion`, that `EXECUTE_RESEARCH_INTAKE_PROMOTION` creates only `promotion/execution_plan.json` and `promotion/execution_report.md`, and that all external mutation flags remain false. Manual smoke should create a draft image package, record promotion approval, create an execution plan, and confirm the report says OpenCrab, Neo4j, and Paperclip are not executed.

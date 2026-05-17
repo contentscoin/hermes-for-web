@@ -463,6 +463,9 @@ def handle_post(handler, parsed) -> bool:
     if parsed.path == '/api/research-intake/approve-promotion':
         return _handle_research_intake_approve_promotion(handler, body)
 
+    if parsed.path == '/api/research-intake/execution-plan':
+        return _handle_research_intake_execution_plan(handler, body)
+
     # ── Workspace management (POST) ──
     if parsed.path == '/api/workspaces/add':
         return _handle_workspace_add(handler, body)
@@ -1399,6 +1402,114 @@ def _handle_research_intake_approve_promotion(handler, body):
                 'paperclip_reflection': False,
             },
             'next': decision['next'],
+        }))
+    except FileNotFoundError as e:
+        return bad(handler, str(e), 404)
+    except (ValueError, PermissionError, OSError, json.JSONDecodeError) as e:
+        return bad(handler, str(e), 400)
+    except Exception as e:
+        return bad(handler, str(e), 500)
+
+
+def _handle_research_intake_execution_plan(handler, body):
+    try:
+        package_dir = _safe_research_intake_package_dir(str(body.get('package_id') or body.get('package_dir') or ''))
+        manifest_path = package_dir / 'manifest.json'
+        decision_path = package_dir / 'promotion' / 'approval_decision.json'
+        review_path = package_dir / 'review' / 'visual_evidence_review.md'
+        if not manifest_path.exists():
+            return bad(handler, 'manifest.json not found', 404)
+        if not decision_path.exists():
+            return bad(handler, 'package must be approved_for_promotion before execution planning', 409)
+        manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+        decision = json.loads(decision_path.read_text(encoding='utf-8'))
+        if manifest.get('status') != 'approved_for_promotion' or decision.get('status') != 'approved_for_promotion':
+            return bad(handler, 'package must be approved_for_promotion before execution planning', 409)
+        approval_phrase = str(body.get('execution_approval') or '').strip()
+        if approval_phrase != 'EXECUTE_RESEARCH_INTAKE_PROMOTION':
+            return bad(handler, 'execution_approval must equal EXECUTE_RESEARCH_INTAKE_PROMOTION', 400)
+        allowed = {'opencrab_sync', 'neo4j_write', 'paperclip_reflection'}
+        requested = body.get('actions') or []
+        if isinstance(requested, str):
+            requested = [requested]
+        requested_actions = [a for a in requested if a in allowed]
+        if not requested_actions:
+            requested_actions = ['opencrab_sync']
+        decision_actions = decision.get('approved_actions') or []
+        if isinstance(decision_actions, str):
+            decision_actions = [decision_actions]
+        approved_set = set(a for a in decision_actions if a in allowed)
+        approved_actions = [a for a in requested_actions if a in approved_set]
+        blocked_actions = [a for a in requested_actions if a not in approved_set]
+        counts = manifest.get('counts') or {}
+        plan = {
+            'package_id': manifest.get('package_id') or package_dir.name,
+            'status': 'execution_plan_ready',
+            'requested_actions': requested_actions,
+            'approved_actions': approved_actions,
+            'blocked_actions': blocked_actions,
+            'approver': str(body.get('approver') or 'webui-user'),
+            'planned_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+            'execution_approval_phrase': approval_phrase,
+            'requires_final_tool_execution': True,
+            'requires_paperclip_reflection_approval': 'paperclip_reflection' in approved_actions,
+            'external_mutations_performed': [],
+            'external_mutations': {
+                'opencrab_sync': False,
+                'neo4j_write': False,
+                'paperclip_reflection': False,
+            },
+            'inputs': {
+                'review_path': str(review_path),
+                'approval_decision_path': str(decision_path),
+                'counts': counts,
+            },
+            'next': 'Show this execution report and request final tool execution approval before applying any external mutation.',
+        }
+        plan_path = package_dir / 'promotion' / 'execution_plan.json'
+        report_path = package_dir / 'promotion' / 'execution_report.md'
+        plan_path.parent.mkdir(parents=True, exist_ok=True)
+        plan_path.write_text(json.dumps(plan, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+        report_lines = [
+            '# Research Intake Execution Plan',
+            '',
+            f"Package: {plan['package_id']}",
+            f"Status: {plan['status']}",
+            '',
+            '## Approved actions',
+            *(f"- {action}" for action in approved_actions),
+            '',
+            '## Blocked actions',
+            *(f"- {action}" for action in blocked_actions),
+            '',
+            '## Mutation status',
+            '- OpenCrab sync: not executed',
+            '- Neo4j write: not executed',
+            '- Paperclip reflection: not executed',
+            '',
+            'Final tool execution approval is still required before any external mutation.',
+        ]
+        report_path.write_text('\n'.join(report_lines) + '\n', encoding='utf-8')
+        manifest['execution'] = {
+            'status': plan['status'],
+            'execution_plan_path': str(plan_path),
+            'execution_report_path': str(report_path),
+            'requires_final_tool_execution': True,
+        }
+        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+        from api.opencrab_connector import redact_opencrab_endpoint
+        return j(handler, redact_opencrab_endpoint({
+            'ok': True,
+            'package_id': plan['package_id'],
+            'package_dir': str(package_dir),
+            'status': plan['status'],
+            'execution_plan_path': str(plan_path),
+            'execution_report_path': str(report_path),
+            'approved_actions': approved_actions,
+            'blocked_actions': blocked_actions,
+            'requires_final_tool_execution': True,
+            'external_mutations': plan['external_mutations'],
+            'next': plan['next'],
         }))
     except FileNotFoundError as e:
         return bad(handler, str(e), 404)

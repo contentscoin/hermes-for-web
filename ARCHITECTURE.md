@@ -1595,3 +1595,8 @@ body.resizing added during drag to suppress text selection.
 ### Research Intake approved promotion record
 
 The Research Intake WebUI now separates human review approval from execution. `POST /api/research-intake/approve-promotion` records `promotion/approval_decision.json` under the draft package, marks the manifest as `approved_for_promotion`, and still performs no OpenCrab sync, Neo4j write, or Paperclip reflection. `GET /api/research-intake/review` returns the existing `promotion_decision` so the review panel can show approval state without mutating external systems. A later execution step must request separate explicit approval before any external mutation. LocalCrab status reports the draft package builder as ready instead of pending, with package roots for both `opencrab-ingest-packages` and `research-intake-packages`.
+
+
+### Research Intake explicit execution plan
+
+`POST /api/research-intake/execution-plan` is the next approval gate after `approved_for_promotion`. It accepts only packages that already have `promotion/approval_decision.json` and manifest status `approved_for_promotion`, and it requires the literal phrase `EXECUTE_RESEARCH_INTAKE_PROMOTION`. The endpoint writes `promotion/execution_plan.json` and `promotion/execution_report.md`, filters requested actions to those already approved, and still performs no OpenCrab sync, Neo4j write, or Paperclip reflection. The generated report is the artifact to present before a final tool-execution approval.
