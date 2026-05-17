@@ -176,8 +176,11 @@ hdr "Checking for existing instances..."
 
 EXISTING=$(lsof -ti tcp:"${PORT}" 2>/dev/null || true)
 if [[ -n "${EXISTING}" ]]; then
-    warn "Killing existing process on port ${PORT} (PID ${EXISTING})"
-    kill "${EXISTING}" 2>/dev/null || true
+    warn "Killing existing process(es) on port ${PORT}: $(echo "${EXISTING}" | tr '\n' ' ')"
+    while IFS= read -r pid; do
+        [[ -z "${pid}" ]] && continue
+        kill "${pid}" 2>/dev/null || true
+    done <<< "${EXISTING}"
     sleep 0.5
 fi
 
