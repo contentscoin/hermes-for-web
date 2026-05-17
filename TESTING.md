@@ -1745,3 +1745,8 @@ Promotion approval is covered by `tests/test_research_intake_webui.py`: it verif
 ### Research Intake execution plan checks
 
 `tests/test_research_intake_webui.py` covers the explicit execution plan gate. It verifies that draft packages are rejected until `approved_for_promotion`, that `EXECUTE_RESEARCH_INTAKE_PROMOTION` creates only `promotion/execution_plan.json` and `promotion/execution_report.md`, and that all external mutation flags remain false. Manual smoke should create a draft image package, record promotion approval, create an execution plan, and confirm the report says OpenCrab, Neo4j, and Paperclip are not executed.
+
+
+### Research Intake final decision report checks
+
+The Research Intake WebUI tests verify `GET /api/research-intake/execution-report`, inclusion of `execution_report` in the review payload, and the `최종 실행 decision report` UI button. Smoke testing should create a draft, record promotion approval, create an execution plan, load the final report, and verify that all external mutation flags are still false.

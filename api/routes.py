@@ -154,6 +154,9 @@ def handle_get(handler, parsed) -> bool:
     if parsed.path == '/api/research-intake/review':
         return _handle_research_intake_review(handler, parsed)
 
+    if parsed.path == '/api/research-intake/execution-report':
+        return _handle_research_intake_execution_report(handler, parsed)
+
     if parsed.path == '/api/settings':
         settings = load_settings()
         # Never expose the stored password hash to clients
@@ -1284,6 +1287,28 @@ def _safe_package_dir_from_query(parsed) -> Path:
     return package_dir
 
 
+def _research_intake_execution_report_payload(package_dir: Path) -> dict | None:
+    report_path = package_dir / 'promotion' / 'execution_report.md'
+    plan_path = package_dir / 'promotion' / 'execution_plan.json'
+    if not report_path.exists() or not plan_path.exists():
+        return None
+    plan = json.loads(plan_path.read_text(encoding='utf-8'))
+    external_mutations = plan.get('external_mutations') or {
+        'opencrab_sync': False,
+        'neo4j_write': False,
+        'paperclip_reflection': False,
+    }
+    return {
+        'status': plan.get('status') or 'execution_plan_ready',
+        'content': report_path.read_text(encoding='utf-8', errors='replace'),
+        'execution_plan': plan,
+        'execution_report_path': str(report_path),
+        'execution_plan_path': str(plan_path),
+        'requires_final_tool_execution': bool(plan.get('requires_final_tool_execution', True)),
+        'external_mutations': external_mutations,
+    }
+
+
 def _handle_research_intake_review(handler, parsed):
     try:
         package_dir = _safe_package_dir_from_query(parsed)
@@ -1300,6 +1325,7 @@ def _handle_research_intake_review(handler, parsed):
                 promotion_decision = json.loads(decision_path.read_text(encoding='utf-8'))
             except json.JSONDecodeError:
                 promotion_decision = {'status': 'invalid_decision_file', 'external_mutations_performed': []}
+        execution_report = _research_intake_execution_report_payload(package_dir)
         from api.opencrab_connector import redact_opencrab_endpoint
         return j(handler, redact_opencrab_endpoint({
             'ok': True,
@@ -1309,6 +1335,7 @@ def _handle_research_intake_review(handler, parsed):
             'content': content,
             'manifest': manifest,
             'promotion_decision': promotion_decision,
+            'execution_report': execution_report,
             'guards': manifest.get('guards') or {},
             'external_mutations': {
                 'opencrab_sync': False,
@@ -1319,6 +1346,29 @@ def _handle_research_intake_review(handler, parsed):
     except FileNotFoundError as e:
         return bad(handler, str(e), 404)
     except (ValueError, PermissionError, OSError) as e:
+        return bad(handler, str(e), 400)
+    except Exception as e:
+        return bad(handler, str(e), 500)
+
+
+def _handle_research_intake_execution_report(handler, parsed):
+    try:
+        package_dir = _safe_package_dir_from_query(parsed)
+        report = _research_intake_execution_report_payload(package_dir)
+        if not report:
+            return bad(handler, 'execution_report.md not found', 404)
+        manifest_path = package_dir / 'manifest.json'
+        manifest = json.loads(manifest_path.read_text(encoding='utf-8')) if manifest_path.exists() else {}
+        from api.opencrab_connector import redact_opencrab_endpoint
+        return j(handler, redact_opencrab_endpoint({
+            'ok': True,
+            'package_id': manifest.get('package_id') or package_dir.name,
+            'package_dir': str(package_dir),
+            **report,
+        }))
+    except FileNotFoundError as e:
+        return bad(handler, str(e), 404)
+    except (ValueError, PermissionError, OSError, json.JSONDecodeError) as e:
         return bad(handler, str(e), 400)
     except Exception as e:
         return bad(handler, str(e), 500)

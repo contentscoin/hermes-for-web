@@ -16,6 +16,7 @@ def test_research_intake_routes_are_registered():
     assert "/api/research-intake/review" in routes
     assert "/api/research-intake/approve-promotion" in routes
     assert "/api/research-intake/execution-plan" in routes
+    assert "/api/research-intake/execution-report" in routes
     assert "_handle_research_intake_image_draft" in routes
     assert "_handle_research_intake_review" in routes
 
@@ -234,3 +235,75 @@ def test_research_intake_execution_plan_ui_controls_exist():
     assert "function createResearchIntakeExecutionPlan" in boot
     assert "/api/research-intake/execution-plan" in boot
     assert "EXECUTE_RESEARCH_INTAKE_PROMOTION" in boot
+
+
+def test_research_intake_execution_report_returns_decision_report_without_mutation(tmp_path, monkeypatch):
+    import api.routes as routes
+
+    package_root = tmp_path / "research-intake-packages"
+    package_dir = package_root / "research-intake-test-package"
+    (package_dir / "promotion").mkdir(parents=True)
+    report = "# Research Intake Execution Plan\n\nFinal tool execution approval is still required before any external mutation.\n"
+    (package_dir / "promotion" / "execution_report.md").write_text(report, encoding="utf-8")
+    (package_dir / "promotion" / "execution_plan.json").write_text(json.dumps({
+        "package_id": "research-intake-test-package",
+        "status": "execution_plan_ready",
+        "approved_actions": ["opencrab_sync"],
+        "blocked_actions": ["paperclip_reflection"],
+        "requires_final_tool_execution": True,
+        "external_mutations_performed": [],
+        "external_mutations": {"opencrab_sync": False, "neo4j_write": False, "paperclip_reflection": False},
+    }), encoding="utf-8")
+    (package_dir / "manifest.json").write_text(json.dumps({
+        "package_id": "research-intake-test-package",
+        "status": "approved_for_promotion",
+        "execution": {"status": "execution_plan_ready"},
+    }), encoding="utf-8")
+
+    monkeypatch.setattr(routes, "STATE_DIR", tmp_path)
+    handler = DummyHandler()
+    routes._handle_research_intake_execution_report(handler, SimpleNamespace(query="package_id=research-intake-test-package"))
+
+    payload = handler.json_payload()
+    assert handler.status == 200
+    assert payload["ok"] is True
+    assert payload["status"] == "execution_plan_ready"
+    assert payload["content"] == report
+    assert payload["requires_final_tool_execution"] is True
+    assert payload["external_mutations"] == {"opencrab_sync": False, "neo4j_write": False, "paperclip_reflection": False}
+    assert payload["execution_plan"]["external_mutations_performed"] == []
+
+
+def test_research_intake_review_returns_execution_report_when_present(tmp_path, monkeypatch):
+    import api.routes as routes
+
+    package_root = tmp_path / "research-intake-packages"
+    package_dir = package_root / "research-intake-test-package"
+    (package_dir / "review").mkdir(parents=True)
+    (package_dir / "promotion").mkdir(parents=True)
+    (package_dir / "review" / "visual_evidence_review.md").write_text("# Visual Evidence Review\n", encoding="utf-8")
+    report = "# Research Intake Execution Plan\n\nOpenCrab sync: not executed\n"
+    (package_dir / "promotion" / "execution_report.md").write_text(report, encoding="utf-8")
+    (package_dir / "promotion" / "execution_plan.json").write_text(json.dumps({"status": "execution_plan_ready"}), encoding="utf-8")
+    (package_dir / "manifest.json").write_text(json.dumps({
+        "package_id": "research-intake-test-package",
+        "status": "approved_for_promotion",
+    }), encoding="utf-8")
+
+    monkeypatch.setattr(routes, "STATE_DIR", tmp_path)
+    handler = DummyHandler()
+    routes._handle_research_intake_review(handler, SimpleNamespace(query="package_id=research-intake-test-package"))
+
+    payload = handler.json_payload()
+    assert handler.status == 200
+    assert payload["execution_report"]["status"] == "execution_plan_ready"
+    assert payload["execution_report"]["content"] == report
+
+
+def test_research_intake_final_execution_report_ui_controls_exist():
+    html = read("static/index.html")
+    boot = read("static/boot.js")
+    assert "researchIntakeFinalExecutionReport" in html
+    assert "function loadResearchIntakeExecutionReport" in boot
+    assert "/api/research-intake/execution-report" in boot
+    assert "최종 실행 decision report" in html + boot

@@ -1074,6 +1074,8 @@ function _researchIntakeSetApprovalEnabled(enabled){
   if(btn) btn.disabled=!enabled;
   const execBtn=$('researchIntakeExecutionPlan');
   if(execBtn) execBtn.disabled=!enabled;
+  const reportBtn=$('researchIntakeFinalExecutionReport');
+  if(reportBtn) reportBtn.disabled=!enabled;
 }
 function _researchIntakeRenderReview(data){
   const panel=$('researchIntakeReviewPanel');
@@ -1082,7 +1084,9 @@ function _researchIntakeRenderReview(data){
   const manifest=(data&&data.manifest)||{};
   const counts=manifest.counts||{};
   const decision=(data&&data.promotion_decision)||null;
+  const executionReport=(data&&data.execution_report)||null;
   const decisionLine=decision?`<div class="research-intake-promotion-state">승인 기록: ${esc(decision.status||'recorded')} · external mutations performed: ${esc((decision.external_mutations_performed||[]).length)}</div>`:'';
+  const reportLine=executionReport?`<div class="research-intake-final-report"><strong>최종 실행 decision report</strong><div>status: ${esc(executionReport.status||'execution_plan_ready')} · final tool execution approval required</div><pre>${esc(executionReport.content||'execution report unavailable')}</pre></div>`:'';
   panel.innerHTML=`
     <div class="research-intake-review-head">
       <strong>Visual evidence review</strong>
@@ -1094,6 +1098,7 @@ function _researchIntakeRenderReview(data){
       <span>Paperclip reflection: disabled</span>
     </div>
     ${decisionLine}
+    ${reportLine}
     <div class="research-intake-counts">claims ${esc(counts.claims||0)} · nodes ${esc(counts.nodes||0)} · evidence ${esc(counts.evidence||0)}</div>
     <pre>${esc(content||'review content unavailable')}</pre>`;
 }
@@ -1154,6 +1159,26 @@ async function approveResearchIntakePromotion(){
     _researchIntakeSetResult('승인 기록 실패: '+(e.message||e), true);
   }
 }
+async function loadResearchIntakeExecutionReport(packageIdOrDir){
+  const packageId=packageIdOrDir||_researchIntakeCurrentPackage;
+  if(!packageId){_researchIntakeSetResult('먼저 execution plan을 생성하세요.', true);return null;}
+  const isDir=String(packageId).startsWith('/');
+  const qs=isDir?`package_dir=${encodeURIComponent(packageId)}`:`package_id=${encodeURIComponent(packageId)}`;
+  try{
+    const res=await fetch(new URL(`/api/research-intake/execution-report?${qs}`,location.origin).href,{credentials:'include'});
+    const data=await res.json();
+    if(!res.ok||!data.ok) throw new Error(data.error||'execution report load failed');
+    const panel=$('researchIntakeReviewPanel');
+    if(panel){
+      panel.innerHTML=`<div class="research-intake-final-report"><strong>최종 실행 decision report</strong><div>status: ${esc(data.status||'execution_plan_ready')} · final tool execution approval required</div><pre>${esc(data.content||'execution report unavailable')}</pre></div>`;
+    }
+    _researchIntakeSetResult('최종 실행 decision report 표시 완료 · 아직 외부 반영 없음', false);
+    return data;
+  }catch(e){
+    _researchIntakeSetResult('최종 실행 decision report 로드 실패: '+(e.message||e), true);
+    return null;
+  }
+}
 async function createResearchIntakeExecutionPlan(){
   const packageId=_researchIntakeCurrentPackage;
   if(!packageId){_researchIntakeSetResult('먼저 승인된 review package를 선택하세요.', true);return;}
@@ -1171,6 +1196,7 @@ async function createResearchIntakeExecutionPlan(){
     if(!res.ok||!data.ok) throw new Error(data.error||'execution plan failed');
     _researchIntakeSetResult(`실행 계획 준비: ${data.status} · final tool execution approval 필요 · external mutations: disabled`, false);
     await loadResearchIntakeReview(data.package_id||packageId);
+    await loadResearchIntakeExecutionReport(data.package_id||packageId);
   }catch(e){
     _researchIntakeSetResult('실행 계획 생성 실패: '+(e.message||e), true);
   }
@@ -1178,4 +1204,5 @@ async function createResearchIntakeExecutionPlan(){
 window.createResearchIntakeImageDraft=createResearchIntakeImageDraft;
 window.loadResearchIntakeReview=loadResearchIntakeReview;
 window.approveResearchIntakePromotion=approveResearchIntakePromotion;
+window.loadResearchIntakeExecutionReport=loadResearchIntakeExecutionReport;
 window.createResearchIntakeExecutionPlan=createResearchIntakeExecutionPlan;

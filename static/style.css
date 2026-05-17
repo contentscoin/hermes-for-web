@@ -1925,5 +1925,9 @@ body.multi-agent-mode #preflightShelf{display:none !important;}
 .research-intake-guard-lines{display:flex;flex-direction:column;gap:2px;padding:8px;font-size:10px;color:var(--muted);border-bottom:1px solid var(--border)}
 .research-intake-counts{padding:6px 8px;font-size:10px;color:var(--muted);border-bottom:1px solid var(--border)}
 .research-intake-promotion-state{padding:6px 8px;font-size:10px;color:var(--blue);background:rgba(124,185,255,.07);border-bottom:1px solid var(--border)}
+.research-intake-final-report{margin:8px;border:1px solid rgba(46,160,67,.35);background:rgba(46,160,67,.08);border-radius:8px;overflow:hidden;font-size:11px;color:var(--text)}
+.research-intake-final-report strong{display:block;padding:7px 8px;border-bottom:1px solid var(--border);color:var(--green)}
+.research-intake-final-report div{padding:6px 8px;color:var(--muted)}
+.research-intake-final-report pre{margin:0;padding:8px;max-height:260px;overflow:auto;white-space:pre-wrap;background:rgba(0,0,0,.14);font-size:10px}
 .research-intake-review pre{white-space:pre-wrap;word-break:break-word;margin:0;padding:8px;font-size:11px;line-height:1.45;color:var(--text);font-family:'SF Mono',ui-monospace,monospace}
 #researchIntakeResult.error{color:var(--accent)}
