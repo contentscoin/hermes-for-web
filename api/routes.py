@@ -472,6 +472,9 @@ def handle_post(handler, parsed) -> bool:
     if parsed.path == '/api/research-intake/approval-prompt':
         return _handle_research_intake_approval_prompt(handler, body)
 
+    if parsed.path == '/api/research-intake/execute-opencrab':
+        return _handle_research_intake_execute_opencrab(handler, body)
+
     # ── Workspace management (POST) ──
     if parsed.path == '/api/workspaces/add':
         return _handle_workspace_add(handler, body)
@@ -1660,6 +1663,117 @@ def _handle_research_intake_approval_prompt(handler, body):
             'requires_final_tool_execution': True,
             'requires_paperclip_reflection_approval': requires_paperclip,
             'external_mutations': payload['external_mutations'],
+        }))
+    except FileNotFoundError as e:
+        return bad(handler, str(e), 404)
+    except (ValueError, PermissionError, OSError, json.JSONDecodeError) as e:
+        return bad(handler, str(e), 400)
+    except Exception as e:
+        return bad(handler, str(e), 500)
+
+
+def _handle_research_intake_execute_opencrab(handler, body):
+    try:
+        package_dir = _safe_research_intake_package_dir(str(body.get('package_id') or body.get('package_dir') or ''))
+        prompt_path = package_dir / 'promotion' / 'final_execution_approval_prompt.json'
+        if not prompt_path.exists():
+            return bad(handler, 'final_execution_approval_prompt is required before OpenCrab execution', 409)
+        prompt = json.loads(prompt_path.read_text(encoding='utf-8'))
+        if prompt.get('status') != 'approval_prompt_ready':
+            return bad(handler, 'final_execution_approval_prompt must be approval_prompt_ready', 409)
+        expected_phrase = str(prompt.get('approval_phrase') or 'FINAL_EXECUTE_RESEARCH_INTAKE')
+        provided_phrase = str(body.get('final_execution_approval') or '').strip()
+        if provided_phrase != expected_phrase:
+            return bad(handler, f'final_execution_approval must equal {expected_phrase}', 400)
+        requested_actions = prompt.get('requested_actions') or []
+        if isinstance(requested_actions, str):
+            requested_actions = [requested_actions]
+        if 'opencrab_sync' not in requested_actions:
+            return bad(handler, 'opencrab_sync is not included in final approval prompt requested_actions', 409)
+        manifest_path = package_dir / 'manifest.json'
+        manifest = json.loads(manifest_path.read_text(encoding='utf-8')) if manifest_path.exists() else {}
+        counts = manifest.get('counts') or {
+            'claims': _jsonl_count(package_dir / 'ontology' / 'claims.jsonl'),
+            'nodes': _jsonl_count(package_dir / 'ontology' / 'nodes.jsonl'),
+            'evidence': _jsonl_count(package_dir / 'ontology' / 'evidence.jsonl'),
+        }
+        dry_run = bool(body.get('dry_run', True))
+        execute_live = bool(body.get('execute_live', False))
+        if execute_live and dry_run:
+            return bad(handler, 'execute_live requires dry_run=false and a separate operator-approved tool execution path', 400)
+        if execute_live:
+            return bad(handler, 'live OpenCrab sync is not implemented in WebUI; use a separate approved tool execution after this request', 501)
+        record = {
+            'package_id': manifest.get('package_id') or package_dir.name,
+            'status': 'opencrab_execution_ready',
+            'action': 'opencrab_sync',
+            'operator': str(body.get('operator') or 'webui-user'),
+            'approved_actions': ['opencrab_sync'],
+            'final_execution_approval': provided_phrase,
+            'created_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+            'dry_run': dry_run,
+            'requires_live_execution_approval': True,
+            'requires_operator_tool_run': True,
+            'source_counts': counts,
+            'source_paths': {
+                'claims': str(package_dir / 'ontology' / 'claims.jsonl'),
+                'nodes': str(package_dir / 'ontology' / 'nodes.jsonl'),
+                'evidence': str(package_dir / 'ontology' / 'evidence.jsonl'),
+            },
+            'external_mutations_performed': [],
+            'external_mutations': {
+                'opencrab_sync': False,
+                'neo4j_write': False,
+                'paperclip_reflection': False,
+            },
+            'next': 'Use this request as the operator handoff for a separately approved live OpenCrab tool execution.',
+        }
+        record_path = package_dir / 'promotion' / 'opencrab_execution_request.json'
+        report_path = package_dir / 'promotion' / 'opencrab_execution_request.md'
+        record_path.parent.mkdir(parents=True, exist_ok=True)
+        record_path.write_text(json.dumps(record, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+        report_path.write_text('\n'.join([
+            '# Research Intake OpenCrab Execution Request',
+            '',
+            f"Package: {record['package_id']}",
+            f"Status: {record['status']}",
+            f"Dry run: {str(dry_run).lower()}",
+            '',
+            '## Source counts',
+            f"- claims: {counts.get('claims', 0)}",
+            f"- nodes: {counts.get('nodes', 0)}",
+            f"- evidence: {counts.get('evidence', 0)}",
+            '',
+            '## Mutation status',
+            '- OpenCrab sync: not executed by WebUI',
+            '- Neo4j write: not executed',
+            '- Paperclip reflection: not executed',
+            '',
+            'Live OpenCrab tool execution still requires a separate operator-approved path.',
+        ]) + '\n', encoding='utf-8')
+        manifest['opencrab_execution'] = {
+            'status': record['status'],
+            'request_path': str(record_path),
+            'report_path': str(report_path),
+            'dry_run': dry_run,
+            'requires_live_execution_approval': True,
+        }
+        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+        from api.opencrab_connector import redact_opencrab_endpoint
+        return j(handler, redact_opencrab_endpoint({
+            'ok': True,
+            'package_id': record['package_id'],
+            'package_dir': str(package_dir),
+            'status': record['status'],
+            'dry_run': dry_run,
+            'request_path': str(record_path),
+            'report_path': str(report_path),
+            'approved_actions': record['approved_actions'],
+            'source_counts': counts,
+            'requires_live_execution_approval': True,
+            'requires_operator_tool_run': True,
+            'external_mutations': record['external_mutations'],
+            'next': record['next'],
         }))
     except FileNotFoundError as e:
         return bad(handler, str(e), 404)

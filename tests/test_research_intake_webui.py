@@ -18,6 +18,7 @@ def test_research_intake_routes_are_registered():
     assert "/api/research-intake/execution-plan" in routes
     assert "/api/research-intake/execution-report" in routes
     assert "/api/research-intake/approval-prompt" in routes
+    assert "/api/research-intake/execute-opencrab" in routes
     assert "_handle_research_intake_image_draft" in routes
     assert "_handle_research_intake_review" in routes
 
@@ -385,3 +386,94 @@ def test_research_intake_final_execution_approval_prompt_ui_controls_exist():
     assert "function createResearchIntakeFinalApprovalPrompt" in boot
     assert "/api/research-intake/approval-prompt" in boot
     assert "최종 실행 승인 요청 문구" in html + boot
+
+
+def test_research_intake_opencrab_execution_requires_final_prompt_and_phrase(tmp_path, monkeypatch):
+    import api.routes as routes
+
+    package_root = tmp_path / "research-intake-packages"
+    package_dir = package_root / "research-intake-test-package"
+    (package_dir / "promotion").mkdir(parents=True)
+    (package_dir / "manifest.json").write_text(json.dumps({
+        "package_id": "research-intake-test-package",
+        "status": "approved_for_promotion",
+    }), encoding="utf-8")
+
+    monkeypatch.setattr(routes, "STATE_DIR", tmp_path)
+    handler = DummyHandler()
+    routes._handle_research_intake_execute_opencrab(handler, {
+        "package_id": "research-intake-test-package",
+        "final_execution_approval": "FINAL_EXECUTE_RESEARCH_INTAKE",
+    })
+
+    payload = handler.json_payload()
+    assert handler.status == 409
+    assert "final_execution_approval_prompt" in payload["error"]
+
+    (package_dir / "promotion" / "final_execution_approval_prompt.json").write_text(json.dumps({
+        "package_id": "research-intake-test-package",
+        "status": "approval_prompt_ready",
+        "requested_actions": ["opencrab_sync"],
+        "approval_phrase": "FINAL_EXECUTE_RESEARCH_INTAKE",
+    }), encoding="utf-8")
+    handler = DummyHandler()
+    routes._handle_research_intake_execute_opencrab(handler, {
+        "package_id": "research-intake-test-package",
+        "final_execution_approval": "WRONG",
+    })
+    payload = handler.json_payload()
+    assert handler.status == 400
+    assert "FINAL_EXECUTE_RESEARCH_INTAKE" in payload["error"]
+
+
+def test_research_intake_opencrab_execution_records_guarded_request_without_mutation(tmp_path, monkeypatch):
+    import api.routes as routes
+
+    package_root = tmp_path / "research-intake-packages"
+    package_dir = package_root / "research-intake-test-package"
+    (package_dir / "promotion").mkdir(parents=True)
+    (package_dir / "ontology").mkdir(parents=True)
+    (package_dir / "ontology" / "claims.jsonl").write_text('{"id":"claim-1","text":"FMG claim"}\n', encoding="utf-8")
+    (package_dir / "ontology" / "nodes.jsonl").write_text('{"id":"node-1","label":"FMG"}\n', encoding="utf-8")
+    (package_dir / "manifest.json").write_text(json.dumps({
+        "package_id": "research-intake-test-package",
+        "status": "approved_for_promotion",
+        "counts": {"claims": 1, "nodes": 1, "evidence": 0},
+    }), encoding="utf-8")
+    (package_dir / "promotion" / "final_execution_approval_prompt.json").write_text(json.dumps({
+        "package_id": "research-intake-test-package",
+        "status": "approval_prompt_ready",
+        "requested_actions": ["opencrab_sync"],
+        "approval_phrase": "FINAL_EXECUTE_RESEARCH_INTAKE",
+        "external_mutations_performed": [],
+    }), encoding="utf-8")
+
+    monkeypatch.setattr(routes, "STATE_DIR", tmp_path)
+    handler = DummyHandler()
+    routes._handle_research_intake_execute_opencrab(handler, {
+        "package_id": "research-intake-test-package",
+        "final_execution_approval": "FINAL_EXECUTE_RESEARCH_INTAKE",
+        "dry_run": True,
+        "operator": "test-user",
+    })
+
+    payload = handler.json_payload()
+    assert handler.status == 200
+    assert payload["ok"] is True
+    assert payload["status"] == "opencrab_execution_ready"
+    assert payload["dry_run"] is True
+    assert payload["external_mutations"] == {"opencrab_sync": False, "neo4j_write": False, "paperclip_reflection": False}
+    assert payload["requires_live_execution_approval"] is True
+    record = json.loads((package_dir / "promotion" / "opencrab_execution_request.json").read_text(encoding="utf-8"))
+    assert record["external_mutations_performed"] == []
+    assert record["source_counts"] == {"claims": 1, "nodes": 1, "evidence": 0}
+    assert "opencrab_sync" in record["approved_actions"]
+
+
+def test_research_intake_opencrab_execution_ui_controls_exist():
+    html = read("static/index.html")
+    boot = read("static/boot.js")
+    assert "researchIntakeExecuteOpenCrab" in html
+    assert "function createResearchIntakeOpenCrabExecutionRequest" in boot
+    assert "/api/research-intake/execute-opencrab" in boot
+    assert "OpenCrab 실행 준비" in html + boot

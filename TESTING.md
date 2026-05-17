@@ -1755,3 +1755,8 @@ The Research Intake WebUI tests verify `GET /api/research-intake/execution-repor
 ### Research Intake final approval prompt checks
 
 `tests/test_research_intake_webui.py` verifies the final approval prompt gate: it rejects packages without an execution report, writes `final_execution_approval_prompt.md/json` without mutation, preserves all external mutation flags as false, and exposes the WebUI `최종 실행 승인 요청 문구` button. Smoke testing should run the staged flow through execution report, then call `/api/research-intake/approval-prompt` and confirm the prompt contains `FINAL_EXECUTE_RESEARCH_INTAKE`.
+
+
+### Research Intake guarded OpenCrab execution checks
+
+The OpenCrab execution request tests verify that `/api/research-intake/execute-opencrab` rejects packages without a final approval prompt, rejects an incorrect final phrase, and writes `opencrab_execution_request.json` with `external_mutations_performed: []`. Browser smoke should confirm the `OpenCrab 실행 준비` button exists and the console has no JS errors. API smoke should run the staged flow through approval prompt, then call execute-opencrab with `dry_run=true` and confirm no live mutation flags are enabled.

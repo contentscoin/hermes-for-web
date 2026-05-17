@@ -359,3 +359,8 @@ The OpenCrab panel can now show the Research Intake execution report generated b
 ### Completed: Research Intake final execution approval prompt
 
 The OpenCrab panel can now generate a final execution approval prompt after the execution report exists. This gives the operator the exact approval phrase and action list before any future final execution endpoint. Real OpenCrab sync, Neo4j write, and Paperclip reflection remain intentionally unimplemented and still require explicit approval.
+
+
+### Completed: Research Intake guarded OpenCrab execution request
+
+Research Intake now has an action-specific OpenCrab execution request gate. It records a final operator handoff for `opencrab_sync` after the final approval prompt, while intentionally leaving live sync unimplemented in WebUI. Next implementation should add a separately approved live tool bridge only after deciding the exact OpenCrab write API and audit log shape.
