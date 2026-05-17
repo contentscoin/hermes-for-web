@@ -13,6 +13,29 @@
 
 ---
 
+## Research Intake image draft smoke
+
+SETUP: Start WebUI on the target port and prepare a workspace-local image file. For deterministic tests, also create a small OCR fixture text file.
+
+STEPS:
+  1. Open the OpenCrab panel.
+  2. Enter the image path relative to the active workspace.
+  3. Optionally enter an OCR fixture path, or explicitly enable macOS Vision OCR.
+  4. Keep `OCR text → draft claims 생성` checked when ontology draft candidates are desired.
+  5. Click `이미지 draft package 생성`.
+
+EXPECT:
+  - The API returns a draft package id and `review_available: true`.
+  - The panel renders `# Visual Evidence Review`.
+  - Counts for claims, nodes, and evidence are visible when OCR text is available.
+  - Guard lines state `OpenCrab sync: disabled`, `Neo4j write: disabled`, and `Paperclip reflection: disabled`.
+  - No raw OpenCrab MCP URL or credential values appear in the API response or review panel.
+
+Automated gate:
+  `/Users/jakeshin/.hermes/hermes-agent/venv/bin/python -m pytest tests/test_research_intake_webui.py -q`
+
+---
+
 ## How to Use This Document
 
 Each test has:

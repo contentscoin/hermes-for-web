@@ -80,6 +80,11 @@ Log file:
 
     /tmp/webui-mvp.log   stdout/stderr from the background server process
 
+
+### Research Intake image draft integration
+
+The OpenCrab side panel includes a draft-only Research Intake image flow. `POST /api/research-intake/image-draft` resolves a local image path inside the selected workspace, invokes the sibling `research-intake-pack/scripts/research_intake_router.py` with `--write-draft --run-image-probe`, and stores packages under `STATE_DIR/research-intake-packages`. Optional OCR and OCR-claim drafting require explicit request flags. `GET /api/research-intake/review` is read-only and returns `review/visual_evidence_review.md` plus redacted manifest/guard metadata. The UI in `static/index.html` and `static/boot.js` renders the review markdown in the OpenCrab panel and keeps OpenCrab sync, Neo4j write, and Paperclip reflection disabled.
+
 ---
 
 ## 3. Runtime Environment

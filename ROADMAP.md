@@ -47,6 +47,7 @@
 | v0.34.2 | Theme text colors | 5 new per-theme typography variables (--strong, --em, --code-text, --code-inline-bg, --pre-text) | 433 |
 | v0.34.3 | Light theme final polish | 46 light-scoped selector overrides for sidebar, roles, chips, interactive elements | 433 |
 | v0.35 | Security hardening | Env race fix, random signing key, upload path traversal, PBKDF2 password hash | 433 |
+| 2026-05 | Research Intake image draft WebUI bridge | OpenCrab panel can create draft-only image packages, render visual evidence reviews, and preserve OpenCrab/Neo4j/Paperclip approval guards | +4 focused tests |
 
 ---
 

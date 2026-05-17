@@ -9,7 +9,7 @@
 <link rel="apple-touch-icon" href="/static/favicon.png?v=20260406c">
 <link rel="shortcut icon" href="/static/favicon.png?v=20260406c">
 <script>(function(){var t=localStorage.getItem('hermes-theme');if(t&&t!=='dark')document.documentElement.dataset.theme=t;})()</script>
-<link rel="stylesheet" href="/static/style.css?v=20260507-desktop-comfort1">
+<link rel="stylesheet" href="/static/style.css?v=20260517-research-intake1">
   <!-- Prism.js syntax highlighting (loaded async, non-blocking) -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css" integrity="sha384-wFjoQjtV1y5jVHbt0p35Ui8aV8GVpEZkyF99OXWqP/eNJDU93D3Ugxkoyh6Y2I4A" crossorigin="anonymous">
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-core.min.js" integrity="sha384-MXybTpajaBV0AkcBaCPT4KIvo0FzoCiWXgcihYsw4FUkEz0Pv3JGV6tk2G8vJtDc" crossorigin="anonymous" defer></script>
@@ -212,6 +212,16 @@
         <input id="opencrabIngestSource" placeholder="작업공간 기준 파일 경로: 예) docs/source.md" style="width:100%;background:rgba(255,255,255,.05);border:1px solid var(--border2);border-radius:6px;color:var(--text);padding:6px 8px;font-size:12px;outline:none;box-sizing:border-box;margin-bottom:6px">
         <button class="cron-btn run" style="width:100%;padding:6px 8px" onclick="createOpenCrabIngestPackage()">초안 패키지 생성</button>
         <div id="opencrabIngestResult" class="setup-pack-help" style="margin-top:6px">Neo4j write / OpenCrab sync 없이 검토용 패키지만 생성합니다.</div>
+      </div>
+      <div style="padding:10px 12px 4px;font-size:11px;color:var(--muted)">Research Intake image draft</div>
+      <div class="research-intake-card">
+        <input id="researchIntakeImageSource" placeholder="작업공간 기준 이미지 경로: 예) assets/poster.png">
+        <input id="researchIntakeOcrFixture" placeholder="선택: OCR fixture 텍스트 경로">
+        <label><input type="checkbox" id="researchIntakeDraftClaims" checked> OCR text → draft claims 생성</label>
+        <label><input type="checkbox" id="researchIntakeRunOcr"> macOS Vision OCR 실행</label>
+        <button class="cron-btn run" style="width:100%;padding:6px 8px" onclick="createResearchIntakeImageDraft()">이미지 draft package 생성</button>
+        <div id="researchIntakeResult" class="setup-pack-help">OpenCrab sync / Neo4j write / Paperclip reflection 없이 review package만 생성합니다.</div>
+        <div id="researchIntakeReviewPanel" class="research-intake-review"><div class="setup-pack-help">생성 후 visual evidence review가 여기에 표시됩니다.</div></div>
       </div>
     </div>
     <div class="panel-view" id="panelConsole">
@@ -783,6 +793,6 @@
 <script src="/static/panels.js?v=20260517-opencrab-connector1"></script>
 <script src="/static/facts.js?v=20260501-facts1"></script>
 <script src="/static/multiagent.js?v=20260426-ceo4"></script>
-<script src="/static/boot.js?v=20260503-autoresearch-pack1"></script>
+<script src="/static/boot.js?v=20260517-research-intake1"></script>
 </body>
 </html>

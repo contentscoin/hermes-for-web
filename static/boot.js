@@ -1056,3 +1056,70 @@ async function applyBotName(){
   if(window.ensureMultiAgentState) ensureMultiAgentState();
 })();
 
+
+
+// ── Research Intake image draft → visual evidence review ───────────────────
+function _researchIntakeWorkspace(){
+  return (S&&S.session&&S.session.workspace) || '';
+}
+function _researchIntakeSetResult(message, isError){
+  const el=$('researchIntakeResult');
+  if(!el) return;
+  el.textContent=message;
+  el.classList.toggle('error', Boolean(isError));
+}
+function _researchIntakeRenderReview(data){
+  const panel=$('researchIntakeReviewPanel');
+  if(!panel) return;
+  const content=(data&&data.content)||'';
+  const manifest=(data&&data.manifest)||{};
+  const counts=manifest.counts||{};
+  panel.innerHTML=`
+    <div class="research-intake-review-head">
+      <strong>Visual evidence review</strong>
+      <span>${esc(data.package_id||manifest.package_id||'draft')}</span>
+    </div>
+    <div class="research-intake-guard-lines">
+      <span>OpenCrab sync: disabled</span>
+      <span>Neo4j write: disabled</span>
+      <span>Paperclip reflection: disabled</span>
+    </div>
+    <div class="research-intake-counts">claims ${esc(counts.claims||0)} · nodes ${esc(counts.nodes||0)} · evidence ${esc(counts.evidence||0)}</div>
+    <pre>${esc(content||'review content unavailable')}</pre>`;
+}
+async function loadResearchIntakeReview(packageIdOrDir){
+  if(!packageIdOrDir) return;
+  const isDir=String(packageIdOrDir).startsWith('/');
+  const qs=isDir?`package_dir=${encodeURIComponent(packageIdOrDir)}`:`package_id=${encodeURIComponent(packageIdOrDir)}`;
+  const res=await fetch(new URL(`/api/research-intake/review?${qs}`,location.origin).href,{credentials:'include'});
+  const data=await res.json();
+  if(!res.ok||!data.ok) throw new Error(data.error||'review load failed');
+  _researchIntakeRenderReview(data);
+  return data;
+}
+async function createResearchIntakeImageDraft(){
+  const source=($('researchIntakeImageSource')?.value||'').trim();
+  if(!source){_researchIntakeSetResult('이미지 경로를 입력하세요.', true);return;}
+  const payload={
+    source_path: source,
+    workspace: _researchIntakeWorkspace(),
+    run_ocr: Boolean($('researchIntakeRunOcr')?.checked),
+    draft_ocr_claims: Boolean($('researchIntakeDraftClaims')?.checked),
+  };
+  const fixture=($('researchIntakeOcrFixture')?.value||'').trim();
+  if(fixture) payload.ocr_fixture_text=fixture;
+  _researchIntakeSetResult('Research Intake draft package 생성 중...', false);
+  try{
+    const res=await fetch(new URL('/api/research-intake/image-draft',location.origin).href,{
+      method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)
+    });
+    const data=await res.json();
+    if(!res.ok||!data.ok) throw new Error(data.error||'draft package failed');
+    _researchIntakeSetResult(`Draft 생성 완료: ${data.package_id} · OpenCrab sync: disabled · Neo4j write: disabled · Paperclip reflection: disabled`, false);
+    await loadResearchIntakeReview(data.package_id||data.package_dir);
+  }catch(e){
+    _researchIntakeSetResult('Research Intake 생성 실패: '+(e.message||e), true);
+  }
+}
+window.createResearchIntakeImageDraft=createResearchIntakeImageDraft;
+window.loadResearchIntakeReview=loadResearchIntakeReview;

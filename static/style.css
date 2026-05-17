@@ -1914,3 +1914,15 @@ body.multi-agent-mode #preflightShelf{display:none !important;}
   .messages-inner{max-width:940px;}
   .composer-box{max-width:940px;}
 }
+
+
+/* Research Intake image draft UI */
+.research-intake-card{padding:0 12px 10px;display:flex;flex-direction:column;gap:6px;border-bottom:1px solid var(--border)}
+.research-intake-card input[type="text"],.research-intake-card input:not([type]){width:100%;background:rgba(255,255,255,.05);border:1px solid var(--border2);border-radius:6px;color:var(--text);padding:6px 8px;font-size:12px;outline:none;box-sizing:border-box}
+.research-intake-card label{font-size:11px;color:var(--muted);display:flex;gap:6px;align-items:center}
+.research-intake-review{border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,.035);max-height:38vh;overflow:auto;margin-top:4px}
+.research-intake-review-head{display:flex;justify-content:space-between;gap:8px;padding:8px;border-bottom:1px solid var(--border);font-size:11px;color:var(--text)}
+.research-intake-guard-lines{display:flex;flex-direction:column;gap:2px;padding:8px;font-size:10px;color:var(--muted);border-bottom:1px solid var(--border)}
+.research-intake-counts{padding:6px 8px;font-size:10px;color:var(--muted);border-bottom:1px solid var(--border)}
+.research-intake-review pre{white-space:pre-wrap;word-break:break-word;margin:0;padding:8px;font-size:11px;line-height:1.45;color:var(--text);font-family:'SF Mono',ui-monospace,monospace}
+#researchIntakeResult.error{color:var(--accent)}

@@ -5,6 +5,7 @@ Extracted from server.py (Sprint 11) so server.py is a thin shell.
 import json
 import os
 import queue
+import subprocess
 import sys
 import threading
 import time
@@ -149,6 +150,9 @@ def handle_get(handler, parsed) -> bool:
         from api.opencrab_connector import build_opencrab_status
         from api.config import _get_config_path
         return j(handler, build_opencrab_status(config_path=_get_config_path()))
+
+    if parsed.path == '/api/research-intake/review':
+        return _handle_research_intake_review(handler, parsed)
 
     if parsed.path == '/api/settings':
         settings = load_settings()
@@ -452,6 +456,9 @@ def handle_post(handler, parsed) -> bool:
     # ── OpenCrab Connector (POST) ──
     if parsed.path == '/api/opencrab/ingest-package':
         return _handle_opencrab_ingest_package(handler, body)
+
+    if parsed.path == '/api/research-intake/image-draft':
+        return _handle_research_intake_image_draft(handler, body)
 
     # ── Workspace management (POST) ──
     if parsed.path == '/api/workspaces/add':
@@ -1236,6 +1243,146 @@ def _handle_opencrab_ingest_package(handler, body):
         return bad(handler, str(e), 404)
     except (ValueError, PermissionError, OSError) as e:
         return bad(handler, str(e), 400)
+
+
+def _research_intake_root() -> Path:
+    return (Path(__file__).resolve().parents[2] / 'research-intake-pack').resolve()
+
+
+def _research_intake_output_root() -> Path:
+    return (STATE_DIR / 'research-intake-packages').resolve()
+
+
+def _jsonl_count(path: Path) -> int:
+    if not path.exists():
+        return 0
+    return len([line for line in path.read_text(encoding='utf-8', errors='replace').splitlines() if line.strip()])
+
+
+def _safe_package_dir_from_query(parsed) -> Path:
+    qs = parse_qs(parsed.query)
+    package_id = (qs.get('package_id', [''])[0] or '').strip()
+    package_dir_q = (qs.get('package_dir', [''])[0] or '').strip()
+    output_root = _research_intake_output_root()
+    if package_id:
+        if '/' in package_id or '..' in package_id:
+            raise ValueError('invalid package_id')
+        package_dir = (output_root / package_id).resolve()
+    elif package_dir_q:
+        package_dir = Path(package_dir_q).expanduser().resolve()
+    else:
+        raise ValueError('package_id or package_dir is required')
+    package_dir.relative_to(output_root)
+    if not package_dir.exists() or not package_dir.is_dir():
+        raise FileNotFoundError(f'package not found: {package_dir.name}')
+    return package_dir
+
+
+def _handle_research_intake_review(handler, parsed):
+    try:
+        package_dir = _safe_package_dir_from_query(parsed)
+        review_path = package_dir / 'review' / 'visual_evidence_review.md'
+        manifest_path = package_dir / 'manifest.json'
+        if not review_path.exists():
+            return bad(handler, 'visual_evidence_review.md not found', 404)
+        manifest = json.loads(manifest_path.read_text(encoding='utf-8')) if manifest_path.exists() else {}
+        content = review_path.read_text(encoding='utf-8', errors='replace')
+        from api.opencrab_connector import redact_opencrab_endpoint
+        return j(handler, redact_opencrab_endpoint({
+            'ok': True,
+            'package_id': manifest.get('package_id') or package_dir.name,
+            'package_dir': str(package_dir),
+            'review_path': str(review_path),
+            'content': content,
+            'manifest': manifest,
+            'guards': manifest.get('guards') or {},
+            'external_mutations': {
+                'opencrab_sync': False,
+                'neo4j_write': False,
+                'paperclip_reflection': False,
+            },
+        }))
+    except FileNotFoundError as e:
+        return bad(handler, str(e), 404)
+    except (ValueError, PermissionError, OSError) as e:
+        return bad(handler, str(e), 400)
+    except Exception as e:
+        return bad(handler, str(e), 500)
+
+
+def _handle_research_intake_image_draft(handler, body):
+    source_path = str(body.get('source_path') or '').strip()
+    workspace = str(body.get('workspace') or DEFAULT_WORKSPACE).strip()
+    if not source_path:
+        return bad(handler, 'source_path is required')
+    try:
+        workspace_path = Path(workspace).expanduser().resolve()
+        source = safe_resolve(workspace_path, source_path)
+        if not source.exists() or not source.is_file():
+            raise FileNotFoundError(f'source file not found: {source}')
+        if source.suffix.lower() not in IMAGE_EXTS:
+            return bad(handler, 'source_path must be a local image file', 400)
+        router = _research_intake_root() / 'scripts' / 'research_intake_router.py'
+        if not router.exists():
+            return bad(handler, f'Research Intake router not found: {router}', 404)
+        output_root = _research_intake_output_root()
+        output_root.mkdir(parents=True, exist_ok=True)
+        cmd = [
+            sys.executable,
+            str(router),
+            '--write-draft',
+            '--run-image-probe',
+            '--output-root',
+            str(output_root),
+        ]
+        if bool(body.get('run_ocr', False)):
+            cmd.extend(['--run-ocr', '--ocr-engine', str(body.get('ocr_engine') or 'macos_vision')])
+        fixture_text = str(body.get('ocr_fixture_text') or '').strip()
+        if fixture_text:
+            fixture_path = safe_resolve(workspace_path, fixture_text)
+            cmd.extend(['--ocr-fixture-text', str(fixture_path)])
+        if bool(body.get('draft_ocr_claims', False)):
+            cmd.append('--draft-ocr-claims')
+        cmd.append(str(source))
+        proc = subprocess.run(cmd, cwd=str(_research_intake_root().parent), text=True, capture_output=True, timeout=45)
+        if proc.returncode != 0:
+            return bad(handler, (proc.stderr or proc.stdout or 'Research Intake router failed')[-1200:], 500)
+        payload = json.loads(proc.stdout or '{}')
+        package_dir = Path(payload.get('package_dir', '')).expanduser().resolve()
+        package_dir.relative_to(output_root)
+        review_path = package_dir / 'review' / 'visual_evidence_review.md'
+        manifest_path = package_dir / 'manifest.json'
+        manifest = json.loads(manifest_path.read_text(encoding='utf-8')) if manifest_path.exists() else {}
+        counts = manifest.get('counts') or {
+            'claims': _jsonl_count(package_dir / 'ontology' / 'claims.jsonl'),
+            'nodes': _jsonl_count(package_dir / 'ontology' / 'nodes.jsonl'),
+            'evidence': _jsonl_count(package_dir / 'ontology' / 'evidence.jsonl'),
+        }
+        from api.opencrab_connector import redact_opencrab_endpoint
+        return j(handler, redact_opencrab_endpoint({
+            'ok': True,
+            'status': 'draft',
+            'package_id': payload.get('package_id') or manifest.get('package_id') or package_dir.name,
+            'package_dir': str(package_dir),
+            'review_path': str(review_path),
+            'review_available': review_path.exists(),
+            'counts': counts,
+            'guards': manifest.get('guards') or {},
+            'external_mutations': {
+                'opencrab_sync': False,
+                'neo4j_write': False,
+                'paperclip_reflection': False,
+            },
+            'next': 'Review visual_evidence_review.md before any approved apply/sync/reflection.',
+        }))
+    except FileNotFoundError as e:
+        return bad(handler, str(e), 404)
+    except subprocess.TimeoutExpired:
+        return bad(handler, 'Research Intake router timed out', 504)
+    except (ValueError, PermissionError, OSError, json.JSONDecodeError) as e:
+        return bad(handler, str(e), 400)
+    except Exception as e:
+        return bad(handler, str(e), 500)
 
 
 def _handle_workspace_add(handler, body):
