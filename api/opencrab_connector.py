@@ -99,6 +99,12 @@ def build_opencrab_status(config_path: Optional[Path] = None, paperclip_base_url
     config = _load_config(config_path)
     endpoint = _extract_opencrab_endpoint(config)
     localcrab_path = Path(os.getenv("LOCALCRAB_HOME", str(Path.home() / ".hermes" / "localcrab"))).expanduser()
+    state_dir = Path(os.getenv("HERMES_WEBUI_STATE_DIR", str(Path.home() / ".hermes" / "webui"))).expanduser()
+    package_roots = {
+        "opencrab-ingest-packages": str((state_dir / "opencrab-ingest-packages").resolve()),
+        "research-intake-packages": str((state_dir / "research-intake-packages").resolve()),
+    }
+    draft_package_builder_ready = True
     return redact_opencrab_endpoint({
         "ok": True,
         "account": {
@@ -116,7 +122,10 @@ def build_opencrab_status(config_path: Optional[Path] = None, paperclip_base_url
         "localcrab": {
             "installed": localcrab_path.exists(),
             "path": str(localcrab_path),
-            "runtime": "pending",
+            "runtime": "draft_package_builder_ready",
+            "draft_package_builder_ready": draft_package_builder_ready,
+            "package_roots": package_roots,
+            "note": "LocalCrab runtime is represented by draft package builders; graph/cloud apply remains approval-gated.",
         },
         "guards": {
             "raw_key_exposed": False,

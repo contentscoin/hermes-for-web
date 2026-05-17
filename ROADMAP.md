@@ -340,3 +340,7 @@ Community-requested enhancements tracked from GitHub issues. All shipped.
 | Multi-profile support | #28 | Done | Sprint 22 |
 | Mobile responsive UI | #21 | Done | Sprint 21 |
 | Profile creation in Docker | #44 | Done | v0.27 |
+
+### Completed: approval-gated Research Intake promotion record
+
+Research Intake image drafts can now be marked `approved_for_promotion` from the WebUI without applying to OpenCrab, Neo4j, or Paperclip. Remaining future work is an explicit execution-approval flow that consumes these approved packages and performs selected external mutations only after a separate approval. LocalCrab pending has been replaced with a draft-package-builder-ready status in the connector card.

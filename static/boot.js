@@ -1062,11 +1062,16 @@ async function applyBotName(){
 function _researchIntakeWorkspace(){
   return (S&&S.session&&S.session.workspace) || '';
 }
+let _researchIntakeCurrentPackage=null;
 function _researchIntakeSetResult(message, isError){
   const el=$('researchIntakeResult');
   if(!el) return;
   el.textContent=message;
   el.classList.toggle('error', Boolean(isError));
+}
+function _researchIntakeSetApprovalEnabled(enabled){
+  const btn=$('researchIntakeApprovePromotion');
+  if(btn) btn.disabled=!enabled;
 }
 function _researchIntakeRenderReview(data){
   const panel=$('researchIntakeReviewPanel');
@@ -1074,6 +1079,8 @@ function _researchIntakeRenderReview(data){
   const content=(data&&data.content)||'';
   const manifest=(data&&data.manifest)||{};
   const counts=manifest.counts||{};
+  const decision=(data&&data.promotion_decision)||null;
+  const decisionLine=decision?`<div class="research-intake-promotion-state">승인 기록: ${esc(decision.status||'recorded')} · external mutations performed: ${esc((decision.external_mutations_performed||[]).length)}</div>`:'';
   panel.innerHTML=`
     <div class="research-intake-review-head">
       <strong>Visual evidence review</strong>
@@ -1084,6 +1091,7 @@ function _researchIntakeRenderReview(data){
       <span>Neo4j write: disabled</span>
       <span>Paperclip reflection: disabled</span>
     </div>
+    ${decisionLine}
     <div class="research-intake-counts">claims ${esc(counts.claims||0)} · nodes ${esc(counts.nodes||0)} · evidence ${esc(counts.evidence||0)}</div>
     <pre>${esc(content||'review content unavailable')}</pre>`;
 }
@@ -1115,11 +1123,35 @@ async function createResearchIntakeImageDraft(){
     });
     const data=await res.json();
     if(!res.ok||!data.ok) throw new Error(data.error||'draft package failed');
+    _researchIntakeCurrentPackage=data.package_id||data.package_dir;
+    _researchIntakeSetApprovalEnabled(Boolean(_researchIntakeCurrentPackage));
     _researchIntakeSetResult(`Draft 생성 완료: ${data.package_id} · OpenCrab sync: disabled · Neo4j write: disabled · Paperclip reflection: disabled`, false);
     await loadResearchIntakeReview(data.package_id||data.package_dir);
   }catch(e){
     _researchIntakeSetResult('Research Intake 생성 실패: '+(e.message||e), true);
   }
 }
+async function approveResearchIntakePromotion(){
+  const packageId=_researchIntakeCurrentPackage;
+  if(!packageId){_researchIntakeSetResult('먼저 review package를 생성하세요.', true);return;}
+  _researchIntakeSetResult('승인 기록 저장 중... 외부 sync/write/reflection은 실행하지 않습니다.', false);
+  try{
+    const res=await fetch(new URL('/api/research-intake/approve-promotion',location.origin).href,{
+      method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+        package_id:packageId,
+        approved:true,
+        approved_actions:['opencrab_sync','neo4j_write','paperclip_reflection'],
+        approver:'webui-user'
+      })
+    });
+    const data=await res.json();
+    if(!res.ok||!data.ok) throw new Error(data.error||'approval record failed');
+    _researchIntakeSetResult(`승인 기록 완료: ${data.status} · 별도 실행 승인 전 OpenCrab/Neo4j/Paperclip 반영 없음`, false);
+    await loadResearchIntakeReview(data.package_id||packageId);
+  }catch(e){
+    _researchIntakeSetResult('승인 기록 실패: '+(e.message||e), true);
+  }
+}
 window.createResearchIntakeImageDraft=createResearchIntakeImageDraft;
 window.loadResearchIntakeReview=loadResearchIntakeReview;
+window.approveResearchIntakePromotion=approveResearchIntakePromotion;

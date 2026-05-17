@@ -1736,3 +1736,7 @@ Each has automated API-level tests in `tests/test_sprint{N}.py`.
 *Regression gate: tests/test_regressions.py*
 *Run: pytest tests/ -v --timeout=60*
 *Source: <repo>/*
+
+### Research Intake promotion / LocalCrab checks
+
+Promotion approval is covered by `tests/test_research_intake_webui.py`: it verifies that approval writes only `promotion/approval_decision.json`, returns all external mutation flags as false, exposes the existing `promotion_decision` through the review endpoint, and requires a separate execution approval. The same test file checks that LocalCrab no longer reports a generic pending runtime when the draft package builders are available.

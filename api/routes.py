@@ -460,6 +460,9 @@ def handle_post(handler, parsed) -> bool:
     if parsed.path == '/api/research-intake/image-draft':
         return _handle_research_intake_image_draft(handler, body)
 
+    if parsed.path == '/api/research-intake/approve-promotion':
+        return _handle_research_intake_approve_promotion(handler, body)
+
     # ── Workspace management (POST) ──
     if parsed.path == '/api/workspaces/add':
         return _handle_workspace_add(handler, body)
@@ -1287,6 +1290,13 @@ def _handle_research_intake_review(handler, parsed):
             return bad(handler, 'visual_evidence_review.md not found', 404)
         manifest = json.loads(manifest_path.read_text(encoding='utf-8')) if manifest_path.exists() else {}
         content = review_path.read_text(encoding='utf-8', errors='replace')
+        decision_path = package_dir / 'promotion' / 'approval_decision.json'
+        promotion_decision = None
+        if decision_path.exists():
+            try:
+                promotion_decision = json.loads(decision_path.read_text(encoding='utf-8'))
+            except json.JSONDecodeError:
+                promotion_decision = {'status': 'invalid_decision_file', 'external_mutations_performed': []}
         from api.opencrab_connector import redact_opencrab_endpoint
         return j(handler, redact_opencrab_endpoint({
             'ok': True,
@@ -1295,6 +1305,7 @@ def _handle_research_intake_review(handler, parsed):
             'review_path': str(review_path),
             'content': content,
             'manifest': manifest,
+            'promotion_decision': promotion_decision,
             'guards': manifest.get('guards') or {},
             'external_mutations': {
                 'opencrab_sync': False,
@@ -1305,6 +1316,93 @@ def _handle_research_intake_review(handler, parsed):
     except FileNotFoundError as e:
         return bad(handler, str(e), 404)
     except (ValueError, PermissionError, OSError) as e:
+        return bad(handler, str(e), 400)
+    except Exception as e:
+        return bad(handler, str(e), 500)
+
+
+def _safe_research_intake_package_dir(package_id_or_dir: str) -> Path:
+    value = (package_id_or_dir or '').strip()
+    if not value:
+        raise ValueError('package_id is required')
+    output_root = _research_intake_output_root()
+    if value.startswith('/'):
+        package_dir = Path(value).expanduser().resolve()
+    else:
+        if '/' in value or '..' in value:
+            raise ValueError('invalid package_id')
+        package_dir = (output_root / value).resolve()
+    package_dir.relative_to(output_root)
+    if not package_dir.exists() or not package_dir.is_dir():
+        raise FileNotFoundError(f'package not found: {package_dir.name}')
+    return package_dir
+
+
+def _handle_research_intake_approve_promotion(handler, body):
+    try:
+        package_dir = _safe_research_intake_package_dir(str(body.get('package_id') or body.get('package_dir') or ''))
+        manifest_path = package_dir / 'manifest.json'
+        review_path = package_dir / 'review' / 'visual_evidence_review.md'
+        if not manifest_path.exists():
+            return bad(handler, 'manifest.json not found', 404)
+        if not review_path.exists():
+            return bad(handler, 'visual_evidence_review.md not found', 404)
+        approved = bool(body.get('approved', False))
+        allowed_actions = {'opencrab_sync', 'neo4j_write', 'paperclip_reflection'}
+        requested_actions = body.get('approved_actions') or []
+        if isinstance(requested_actions, str):
+            requested_actions = [requested_actions]
+        approved_actions = [a for a in requested_actions if a in allowed_actions]
+        if approved and not approved_actions:
+            approved_actions = ['opencrab_sync', 'neo4j_write', 'paperclip_reflection']
+        manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+        decision = {
+            'package_id': manifest.get('package_id') or package_dir.name,
+            'approved': approved,
+            'status': 'approved_for_promotion' if approved else 'promotion_not_approved',
+            'approved_actions': approved_actions if approved else [],
+            'approver': str(body.get('approver') or 'webui-user'),
+            'approved_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+            'review_path': str(review_path),
+            'requires_separate_execution_approval': True,
+            'external_mutations_performed': [],
+            'guards': {
+                'opencrab_sync': False,
+                'neo4j_write': False,
+                'paperclip_reflection': False,
+                'paperclip_reflection_requires_explicit_approval': True,
+            },
+            'next': 'Use a separate explicit execution approval before any OpenCrab sync, Neo4j write, or Paperclip reflection.',
+        }
+        decision_path = package_dir / 'promotion' / 'approval_decision.json'
+        decision_path.parent.mkdir(parents=True, exist_ok=True)
+        decision_path.write_text(json.dumps(decision, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+        manifest['promotion'] = {
+            'status': decision['status'],
+            'approval_decision_path': str(decision_path),
+            'requires_separate_execution_approval': True,
+        }
+        manifest['status'] = decision['status'] if approved else manifest.get('status', 'draft')
+        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+        from api.opencrab_connector import redact_opencrab_endpoint
+        return j(handler, redact_opencrab_endpoint({
+            'ok': True,
+            'package_id': decision['package_id'],
+            'package_dir': str(package_dir),
+            'status': decision['status'],
+            'decision_path': str(decision_path),
+            'approved_actions': decision['approved_actions'],
+            'requires_separate_execution_approval': True,
+            'external_mutations': {
+                'opencrab_sync': False,
+                'neo4j_write': False,
+                'paperclip_reflection': False,
+            },
+            'next': decision['next'],
+        }))
+    except FileNotFoundError as e:
+        return bad(handler, str(e), 404)
+    except (ValueError, PermissionError, OSError, json.JSONDecodeError) as e:
         return bad(handler, str(e), 400)
     except Exception as e:
         return bad(handler, str(e), 500)

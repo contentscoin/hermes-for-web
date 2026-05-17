@@ -1591,3 +1591,7 @@ and #rightpanelResize. On mousemove: computes delta and clamps to min/max. On mo
 saves width to localStorage. Widths restored at boot via localStorage.getItem().
 CSS: .resize-handle with position:absolute, width:5px, cursor:col-resize.
 body.resizing added during drag to suppress text selection.
+
+### Research Intake approved promotion record
+
+The Research Intake WebUI now separates human review approval from execution. `POST /api/research-intake/approve-promotion` records `promotion/approval_decision.json` under the draft package, marks the manifest as `approved_for_promotion`, and still performs no OpenCrab sync, Neo4j write, or Paperclip reflection. `GET /api/research-intake/review` returns the existing `promotion_decision` so the review panel can show approval state without mutating external systems. A later execution step must request separate explicit approval before any external mutation. LocalCrab status reports the draft package builder as ready instead of pending, with package roots for both `opencrab-ingest-packages` and `research-intake-packages`.
