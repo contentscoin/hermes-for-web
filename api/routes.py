@@ -482,6 +482,9 @@ def handle_post(handler, parsed) -> bool:
     if parsed.path == '/api/research-intake/approve-opencrab-runner':
         return _handle_research_intake_approve_opencrab_runner(handler, body)
 
+    if parsed.path == '/api/research-intake/preflight-opencrab-runner':
+        return _handle_research_intake_preflight_opencrab_runner(handler, body)
+
     # ── Workspace management (POST) ──
     if parsed.path == '/api/workspaces/add':
         return _handle_workspace_add(handler, body)
@@ -1320,6 +1323,141 @@ def _research_intake_execution_report_payload(package_dir: Path) -> dict | None:
         'requires_final_tool_execution': bool(plan.get('requires_final_tool_execution', True)),
         'external_mutations': external_mutations,
     }
+
+
+def _count_jsonl_records(path):
+    p = Path(path)
+    if not p.exists():
+        raise FileNotFoundError(str(p))
+    count = 0
+    with p.open('r', encoding='utf-8') as fh:
+        for line in fh:
+            if line.strip():
+                json.loads(line)
+                count += 1
+    return count
+
+
+def _research_intake_payload_sha256(payload):
+    canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
+    return hashlib.sha256(canonical.encode('utf-8')).hexdigest()
+
+
+def _handle_research_intake_preflight_opencrab_runner(handler, body):
+    external_mutations = {
+        'opencrab_sync': False,
+        'neo4j_write': False,
+        'paperclip_reflection': False,
+    }
+    try:
+        package_dir = _safe_research_intake_package_dir(str(body.get('package_id') or body.get('package_dir') or ''))
+        promotion_dir = package_dir / 'promotion'
+        contract_path = promotion_dir / 'opencrab_live_sync_contract.json'
+        approval_path = promotion_dir / 'opencrab_runner_approval.json'
+        if not contract_path.exists():
+            return bad(handler, 'opencrab_live_sync_contract.json is required before runner preflight', 409)
+        if not approval_path.exists():
+            return bad(handler, 'opencrab_runner_approval.json is required before runner preflight', 409)
+        contract = json.loads(contract_path.read_text(encoding='utf-8'))
+        approval = json.loads(approval_path.read_text(encoding='utf-8'))
+        connector = str(body.get('connector') or approval.get('connector') or contract.get('connector') or '').strip()
+        runner_mode = str(body.get('runner_mode') or approval.get('runner_mode') or 'live').strip()
+        allowlist = {'paperclip_opencrab_plugin'}
+        if connector not in allowlist:
+            return bad(handler, f'connector is not in live runner allowlist: {connector}', 400)
+        if runner_mode != 'live':
+            return bad(handler, 'preflight verifier requires runner_mode=live', 400)
+        if contract.get('status') != 'opencrab_live_sync_contract_ready':
+            return bad(handler, 'OpenCrab live sync contract is not ready', 409)
+        if approval.get('status') != 'opencrab_runner_approval_recorded' or not approval.get('approved'):
+            return bad(handler, 'OpenCrab runner approval is not recorded', 409)
+        payload = contract.get('payload') or {}
+        if payload.get('action') != 'opencrab_sync':
+            return bad(handler, 'contract payload action must be opencrab_sync', 400)
+        payload_sha256 = _research_intake_payload_sha256(payload)
+        expected = str(body.get('expected_payload_sha256') or approval.get('payload_sha256') or '').strip()
+        if expected and expected != payload_sha256:
+            return j(handler, {'error': 'payload checksum mismatch between approval and contract', 'external_mutations': external_mutations}, status=409)
+        if approval.get('payload_sha256') != payload_sha256:
+            return j(handler, {'error': 'payload checksum mismatch between approval and contract', 'external_mutations': external_mutations}, status=409)
+        paths = payload.get('paths') or {}
+        source_counts = {
+            'claims': _count_jsonl_records(paths.get('claims')),
+            'nodes': _count_jsonl_records(paths.get('nodes')),
+            'evidence': _count_jsonl_records(paths.get('evidence')),
+        }
+        declared_counts = payload.get('counts') or {}
+        if declared_counts and any(int(declared_counts.get(k, -1)) != source_counts[k] for k in source_counts):
+            return j(handler, {'error': 'source JSONL counts do not match contract payload counts', 'external_mutations': external_mutations}, status=409)
+        result = {
+            'package_id': contract.get('package_id') or package_dir.name,
+            'status': 'opencrab_live_runner_preflight_verified',
+            'connector': connector,
+            'runner_mode': runner_mode,
+            'operator': str(body.get('operator') or 'webui-user'),
+            'created_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+            'payload_sha256': payload_sha256,
+            'ready_for_live_runner': True,
+            'verified': {
+                'checksum': True,
+                'allowlist': True,
+                'approval': True,
+                'contract': True,
+                'source_counts': source_counts,
+            },
+            'contract_path': str(contract_path),
+            'approval_path': str(approval_path),
+            'external_mutations_performed': [],
+            'external_mutations': external_mutations,
+            'next': 'A separate live runner may use this preflight artifact to verify the payload before OpenCrab mutation.',
+        }
+        from api.opencrab_connector import redact_opencrab_endpoint
+        safe_result = redact_opencrab_endpoint(result)
+        result_path = promotion_dir / 'opencrab_live_runner_preflight.json'
+        report_path = promotion_dir / 'opencrab_live_runner_preflight.md'
+        result_path.write_text(json.dumps(safe_result, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+        report_path.write_text('\n'.join([
+            '# Research Intake OpenCrab Live Runner Preflight',
+            '',
+            f"Package: {safe_result['package_id']}",
+            f"Status: {safe_result['status']}",
+            f"Connector: {connector}",
+            f"Runner mode: {runner_mode}",
+            f"Payload SHA-256: {payload_sha256}",
+            '',
+            '## Verified',
+            '- checksum: true',
+            '- connector allowlist: true',
+            '- approval artifact: true',
+            '- contract artifact: true',
+            f"- source counts: {source_counts}",
+            '',
+            '## Mutation status',
+            '- OpenCrab sync: not executed by preflight verifier',
+            '- Neo4j write: not executed',
+            '- Paperclip reflection: not executed',
+        ]) + '\n', encoding='utf-8')
+        return j(handler, {
+            'ok': True,
+            'package_id': safe_result['package_id'],
+            'package_dir': str(package_dir),
+            'status': safe_result['status'],
+            'connector': connector,
+            'runner_mode': runner_mode,
+            'payload_sha256': payload_sha256,
+            'preflight_path': str(result_path),
+            'report_path': str(report_path),
+            'ready_for_live_runner': True,
+            'verified': safe_result['verified'],
+            'external_mutations': external_mutations,
+            'next': safe_result['next'],
+        })
+    except FileNotFoundError as e:
+        return j(handler, {'error': str(e), 'external_mutations': external_mutations}, status=404)
+    except (ValueError, PermissionError, OSError, json.JSONDecodeError, TypeError) as e:
+        return j(handler, {'error': str(e), 'external_mutations': external_mutations}, status=400)
+    except Exception as e:
+        return j(handler, {'error': str(e), 'external_mutations': external_mutations}, status=500)
 
 
 def _handle_research_intake_approve_opencrab_runner(handler, body):

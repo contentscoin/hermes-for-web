@@ -379,3 +379,8 @@ A dry-run connector adapter now validates the live sync contract and writes an a
 ### Completed: OpenCrab connector runner approval gate
 
 A live-run approval gate now records connector allowlist approval and a payload checksum before a real OpenCrab runner can be attached. The next step is a separate live runner that verifies `opencrab_runner_approval.json` and the SHA-256 before performing any OpenCrab network mutation.
+
+
+### Completed: OpenCrab live runner preflight verifier
+
+A preflight verifier now rechecks approval, payload checksum, connector allowlist, and source JSONL counts before any real OpenCrab runner can be attached. The next step is a separate Paperclip/OpenCrab live runner that refuses to execute unless the preflight artifact is present and fresh.

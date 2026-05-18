@@ -1630,3 +1630,8 @@ The Research Intake WebUI now separates human review approval from execution. `P
 ### Research Intake OpenCrab runner approval gate
 
 `POST /api/research-intake/approve-opencrab-runner` records the final pre-live-run approval artifact for a connector runner. It requires `promotion/opencrab_live_sync_contract.json`, `runner_mode=live`, `approval_phrase=APPROVE_OPENCRAB_CONNECTOR_RUNNER`, and a connector from the live allowlist (`paperclip_opencrab_plugin`). The endpoint computes a canonical SHA-256 of the contract payload, writes `promotion/opencrab_runner_approval.json` plus `.md`, and still performs no OpenCrab sync, Neo4j write, or Paperclip reflection. A separate live runner must verify the checksum before any network mutation.
+
+
+### Research Intake OpenCrab live runner preflight verifier
+
+`POST /api/research-intake/preflight-opencrab-runner` verifies the final live-run inputs without mutation. It requires both `promotion/opencrab_live_sync_contract.json` and `promotion/opencrab_runner_approval.json`, recomputes the canonical payload SHA-256, validates connector allowlist and `runner_mode=live`, parses the source JSONL files, compares source counts to the contract, and writes `promotion/opencrab_live_runner_preflight.json` plus `.md`. It does not perform OpenCrab sync, Neo4j write, or Paperclip reflection.

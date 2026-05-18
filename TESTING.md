@@ -1775,3 +1775,8 @@ The connector runner tests create a package-local `opencrab_live_sync_contract.j
 ### Research Intake runner approval gate tests
 
 The runner approval gate tests create a package-local live sync contract, call `/api/research-intake/approve-opencrab-runner` with `approval_phrase=APPROVE_OPENCRAB_CONNECTOR_RUNNER`, and assert that `opencrab_runner_approval.json` records the connector, live runner mode, payload SHA-256, and empty `external_mutations_performed`. Disallowed connectors must be rejected by the allowlist before any artifact is treated as executable.
+
+
+### Research Intake live runner preflight tests
+
+The live runner preflight tests create a live sync contract and runner approval artifact, call `/api/research-intake/preflight-opencrab-runner`, and assert checksum verification, allowlist verification, source JSONL count verification, and false mutation flags. A tampered approval checksum must be rejected with no preflight-ready artifact treated as executable.

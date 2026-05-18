@@ -21,6 +21,7 @@ def test_research_intake_routes_are_registered():
     assert "/api/research-intake/execute-opencrab" in routes
     assert "/api/research-intake/run-opencrab-connector" in routes
     assert "/api/research-intake/approve-opencrab-runner" in routes
+    assert "/api/research-intake/preflight-opencrab-runner" in routes
     assert "_handle_research_intake_image_draft" in routes
     assert "_handle_research_intake_review" in routes
 
@@ -717,3 +718,80 @@ def test_research_intake_opencrab_runner_approval_gate_ui_controls_exist():
     assert "function approveResearchIntakeOpenCrabRunner" in boot
     assert "/api/research-intake/approve-opencrab-runner" in boot
     assert "APPROVE_OPENCRAB_CONNECTOR_RUNNER" in boot
+
+
+def _record_opencrab_runner_approval_for_preflight(routes, package_dir):
+    handler = DummyHandler()
+    routes._handle_research_intake_approve_opencrab_runner(handler, {
+        "package_id": "research-intake-test-package",
+        "connector": "paperclip_opencrab_plugin",
+        "runner_mode": "live",
+        "approval_phrase": "APPROVE_OPENCRAB_CONNECTOR_RUNNER",
+        "approver": "test-user",
+    })
+    assert handler.status == 200
+    return handler.json_payload()
+
+
+def test_research_intake_opencrab_live_runner_preflight_verifies_checksum_sources_without_mutation(tmp_path, monkeypatch):
+    import api.routes as routes
+
+    package_dir = _prepare_opencrab_execution_package(tmp_path)
+    _write_live_contract_for_runner_gate(package_dir)
+    monkeypatch.setattr(routes, "STATE_DIR", tmp_path)
+    approval_payload = _record_opencrab_runner_approval_for_preflight(routes, package_dir)
+    handler = DummyHandler()
+    routes._handle_research_intake_preflight_opencrab_runner(handler, {
+        "package_id": "research-intake-test-package",
+        "connector": "paperclip_opencrab_plugin",
+        "runner_mode": "live",
+        "expected_payload_sha256": approval_payload["payload_sha256"],
+        "operator": "test-user",
+    })
+
+    payload = handler.json_payload()
+    assert handler.status == 200
+    assert payload["ok"] is True
+    assert payload["status"] == "opencrab_live_runner_preflight_verified"
+    assert payload["payload_sha256"] == approval_payload["payload_sha256"]
+    assert payload["verified"]["checksum"] is True
+    assert payload["verified"]["allowlist"] is True
+    assert payload["verified"]["source_counts"] == {"claims": 1, "nodes": 1, "evidence": 1}
+    assert payload["external_mutations"] == {"opencrab_sync": False, "neo4j_write": False, "paperclip_reflection": False}
+    preflight = json.loads((package_dir / "promotion" / "opencrab_live_runner_preflight.json").read_text(encoding="utf-8"))
+    assert preflight["ready_for_live_runner"] is True
+    assert preflight["external_mutations_performed"] == []
+    assert "mcp.opencrab.com" not in json.dumps(preflight)
+
+
+def test_research_intake_opencrab_live_runner_preflight_rejects_checksum_mismatch(tmp_path, monkeypatch):
+    import api.routes as routes
+
+    package_dir = _prepare_opencrab_execution_package(tmp_path)
+    _write_live_contract_for_runner_gate(package_dir)
+    monkeypatch.setattr(routes, "STATE_DIR", tmp_path)
+    _record_opencrab_runner_approval_for_preflight(routes, package_dir)
+    approval_path = package_dir / "promotion" / "opencrab_runner_approval.json"
+    approval = json.loads(approval_path.read_text(encoding="utf-8"))
+    approval["payload_sha256"] = "0" * 64
+    approval_path.write_text(json.dumps(approval), encoding="utf-8")
+    handler = DummyHandler()
+    routes._handle_research_intake_preflight_opencrab_runner(handler, {
+        "package_id": "research-intake-test-package",
+        "connector": "paperclip_opencrab_plugin",
+        "runner_mode": "live",
+    })
+
+    payload = handler.json_payload()
+    assert handler.status == 409
+    assert "checksum" in payload["error"]
+    assert payload["external_mutations"] == {"opencrab_sync": False, "neo4j_write": False, "paperclip_reflection": False}
+
+
+def test_research_intake_opencrab_live_runner_preflight_ui_controls_exist():
+    html = read("static/index.html")
+    boot = read("static/boot.js")
+    assert "researchIntakePreflightOpenCrabRunner" in html
+    assert "function preflightResearchIntakeOpenCrabRunner" in boot
+    assert "/api/research-intake/preflight-opencrab-runner" in boot
+    assert "opencrab_live_runner_preflight" in boot
