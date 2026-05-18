@@ -1481,6 +1481,60 @@ def _write_opencrab_live_runner_failure_artifact(promotion_dir, *, package_id, c
     return safe_failure, failure_path, report_path
 
 
+def _write_opencrab_live_runner_success_verification(promotion_dir, *, package_id, connector, payload_sha256, request_payload, connector_result, success_mutations):
+    from api.opencrab_connector import redact_opencrab_endpoint
+    request_counts = request_payload.get('counts') or {}
+    synced_counts = connector_result.get('synced_counts') or {}
+    checks = {
+        'status_completed': connector_result.get('status') == 'opencrab_sync_completed',
+        'payload_sha256_match': connector_result.get('payload_sha256') == payload_sha256,
+        'synced_counts_match_request': synced_counts == request_counts,
+        'opencrab_result_id_present': bool(connector_result.get('opencrab_result_id')),
+    }
+    verified = all(checks.values())
+    verification = {
+        'package_id': package_id,
+        'status': 'opencrab_live_runner_success_verified' if verified else 'opencrab_live_runner_success_verification_failed',
+        'created_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+        'connector': connector,
+        'payload_sha256': payload_sha256,
+        'request_counts': request_counts,
+        'synced_counts': synced_counts,
+        'opencrab_result_id': connector_result.get('opencrab_result_id'),
+        'checks': checks,
+        'connector_result': connector_result,
+        'external_mutations': success_mutations,
+        'external_mutations_performed': ['opencrab_sync'],
+        'verified_for_next_steps': {
+            'neo4j_write': False,
+            'paperclip_reflection': False,
+        },
+    }
+    safe_verification = _redact_live_runner_payload(redact_opencrab_endpoint(verification))
+    verification_path = promotion_dir / 'opencrab_live_runner_success_verification.json'
+    report_path = promotion_dir / 'opencrab_live_runner_success_verification.md'
+    verification_path.write_text(json.dumps(safe_verification, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+    report_path.write_text('\n'.join([
+        '# Paperclip OpenCrab Live Runner Success Verification',
+        '',
+        f"Package: {safe_verification['package_id']}",
+        f"Status: {safe_verification['status']}",
+        f"Payload SHA-256: {safe_verification['payload_sha256']}",
+        f"OpenCrab result id: {safe_verification.get('opencrab_result_id') or ''}",
+        '',
+        '## Checks',
+        f"- status_completed: {str(checks['status_completed']).lower()}",
+        f"- payload_sha256_match: {str(checks['payload_sha256_match']).lower()}",
+        f"- synced_counts_match_request: {str(checks['synced_counts_match_request']).lower()}",
+        f"- opencrab_result_id_present: {str(checks['opencrab_result_id_present']).lower()}",
+        '',
+        '## Next steps',
+        '- Neo4j write: not approved',
+        '- Paperclip reflection: not approved',
+    ]) + '\n', encoding='utf-8')
+    return safe_verification, verification_path, report_path
+
+
 def _handle_research_intake_opencrab_live_runner(handler, body):
     no_mutations = {
         'opencrab_sync': False,
@@ -1568,6 +1622,29 @@ def _handle_research_intake_opencrab_live_runner(handler, body):
                 'external_mutations': no_mutations,
             }, status=502)
         connector_result = connector_result if isinstance(connector_result, dict) else {'raw_result': connector_result}
+        verification, verification_path, verification_report_path = _write_opencrab_live_runner_success_verification(
+            promotion_dir,
+            package_id=gate.get('package_id') or package_dir.name,
+            connector=connector,
+            payload_sha256=gate.get('payload_sha256'),
+            request_payload=request_payload,
+            connector_result=connector_result,
+            success_mutations=success_mutations,
+        )
+        if verification['status'] != 'opencrab_live_runner_success_verified':
+            return j(handler, {
+                'ok': False,
+                'package_id': verification['package_id'],
+                'package_dir': str(package_dir),
+                'status': verification['status'],
+                'connector': connector,
+                'payload_sha256': verification['payload_sha256'],
+                'connector_result': verification['connector_result'],
+                'verification': verification,
+                'verification_path': str(verification_path),
+                'verification_report_path': str(verification_report_path),
+                'external_mutations': success_mutations,
+            }, status=502)
         if connector_result.get('payload_sha256') != gate.get('payload_sha256'):
             return j(handler, {'error': 'connector result payload checksum mismatch', 'connector_result': connector_result, 'external_mutations': success_mutations}, status=502)
         status_value = str(connector_result.get('status') or '')
@@ -1581,6 +1658,7 @@ def _handle_research_intake_opencrab_live_runner(handler, body):
             'payload_sha256': gate.get('payload_sha256'),
             'request': request_payload,
             'connector_result': connector_result,
+            'success_verification': verification,
             'external_mutations': success_mutations,
             'external_mutations_performed': ['opencrab_sync'],
         }
@@ -1610,7 +1688,10 @@ def _handle_research_intake_opencrab_live_runner(handler, body):
             'connector': connector,
             'payload_sha256': safe_result['payload_sha256'],
             'connector_result': safe_result['connector_result'],
+            'success_verification': safe_result.get('success_verification'),
             'result_path': str(result_path),
+            'verification_path': str(verification_path),
+            'verification_report_path': str(verification_report_path),
             'report_path': str(report_path),
             'external_mutations': success_mutations,
         })

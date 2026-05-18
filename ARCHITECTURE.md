@@ -1665,3 +1665,8 @@ The Research Intake WebUI now separates human review approval from execution. `P
 ### Research Intake OpenCrab live runner failure artifact and retry guard
 
 The live runner invocation now writes `promotion/opencrab_live_runner_failure.json/md` when bridge invocation fails before a confirmed OpenCrab sync. Failure artifacts preserve payload SHA-256, connector, redacted request/error, mutation flags all false, and a retry guard requiring explicit `retry=true` with the same approval phrase and checksum before another attempt.
+
+
+### Research Intake OpenCrab live runner success verification
+
+After a connector reports `opencrab_sync_completed`, the live runner writes `promotion/opencrab_live_runner_success_verification.json/md`. The verification checks response status, payload SHA-256, synced counts against the request counts, and `opencrab_result_id` presence. Verification failure returns HTTP 502 and does not approve Neo4j write or Paperclip reflection.

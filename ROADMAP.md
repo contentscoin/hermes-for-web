@@ -414,3 +414,8 @@ The live runner now has a pre-execution bridge health endpoint and WebUI button.
 ### Completed: OpenCrab live runner failure artifact and retry guard
 
 The live runner now records failed pre-confirmation bridge attempts and blocks accidental repeated attempts. Operators must explicitly opt into retry while reusing the same payload checksum and final approval phrase.
+
+
+### Completed: OpenCrab live runner success verification artifact
+
+The live runner now records a post-sync verification artifact before any future Neo4j write or Paperclip reflection stage. Success is only considered verified when connector status, payload checksum, synced counts, and result id all match expectations.

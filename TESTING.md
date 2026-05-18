@@ -1810,3 +1810,8 @@ Bridge health tests cover the unconfigured URL path, schema-valid probe path wit
 ### Research Intake live runner failure artifact tests
 
 Failure/retry tests monkeypatch `_invoke_paperclip_opencrab_live_runner` to raise before mutation. Verify HTTP 502, `opencrab_live_runner_failed`, `opencrab_live_runner_failure.json/md`, redacted errors, all mutation flags false, and retry blocked until explicit `retry=true` with the same payload SHA-256 and approval phrase.
+
+
+### Research Intake live runner success verification tests
+
+Success verification tests monkeypatch `_invoke_paperclip_opencrab_live_runner` to return completed connector responses. Verify `opencrab_live_runner_success_verification.json/md`, checksum/count/result-id checks, and that count mismatch returns `opencrab_live_runner_success_verification_failed` with HTTP 502.

@@ -1077,7 +1077,49 @@ def test_research_intake_paperclip_opencrab_live_runner_invokes_connector_when_g
     result = json.loads((package_dir / "promotion" / "opencrab_live_runner_result.json").read_text(encoding="utf-8"))
     assert result["external_mutations_performed"] == ["opencrab_sync"]
     assert result["connector_result"]["payload_sha256"] == gate["payload_sha256"]
+    verification_path = package_dir / "promotion" / "opencrab_live_runner_success_verification.json"
+    verification = json.loads(verification_path.read_text(encoding="utf-8"))
+    assert verification["status"] == "opencrab_live_runner_success_verified"
+    assert verification["checks"]["payload_sha256_match"] is True
+    assert verification["checks"]["synced_counts_match_request"] is True
+    assert verification["checks"]["opencrab_result_id_present"] is True
+    assert verification["verified_for_next_steps"] == {"neo4j_write": False, "paperclip_reflection": False}
     assert "mcp.opencrab.com" not in json.dumps(result)
+
+
+def test_research_intake_paperclip_opencrab_live_runner_rejects_success_verification_count_mismatch(tmp_path, monkeypatch):
+    import api.routes as routes
+
+    package_dir = _prepare_opencrab_execution_package(tmp_path)
+    _write_live_contract_for_runner_gate(package_dir)
+    monkeypatch.setattr(routes, "STATE_DIR", tmp_path)
+    gate = _prepare_execution_gate_for_live_runner(routes, package_dir, monkeypatch)
+
+    def fake_invoke(request):
+        return {
+            "status": "opencrab_sync_completed",
+            "synced_counts": {"claims": 999},
+            "opencrab_result_id": "fake-opencrab-result-2",
+            "payload_sha256": request["payload_sha256"],
+        }
+
+    monkeypatch.setattr(routes, "_invoke_paperclip_opencrab_live_runner", fake_invoke)
+    handler = DummyHandler()
+    routes._handle_research_intake_opencrab_live_runner(handler, {
+        "package_id": "research-intake-test-package",
+        "connector": "paperclip_opencrab_plugin",
+        "approval_phrase": "EXECUTE_PAPERCLIP_OPENCRAB_LIVE_SYNC",
+        "expected_payload_sha256": gate["payload_sha256"],
+    })
+
+    payload = handler.json_payload()
+    assert handler.status == 502
+    assert payload["status"] == "opencrab_live_runner_success_verification_failed"
+    assert payload["verification"]["checks"]["synced_counts_match_request"] is False
+    verification = json.loads((package_dir / "promotion" / "opencrab_live_runner_success_verification.json").read_text(encoding="utf-8"))
+    assert verification["status"] == "opencrab_live_runner_success_verification_failed"
+    assert verification["external_mutations"]["opencrab_sync"] is True
+    assert verification["verified_for_next_steps"] == {"neo4j_write": False, "paperclip_reflection": False}
 
 
 def test_research_intake_paperclip_opencrab_live_runner_rejects_when_feature_flag_off(tmp_path, monkeypatch):
@@ -1152,7 +1194,7 @@ def test_research_intake_paperclip_opencrab_live_runner_retry_guard_requires_exp
 
     def fake_invoke(request):
         calls.append(request)
-        return {"status": "opencrab_sync_completed", "payload_sha256": request["payload_sha256"], "synced_counts": request["counts"]}
+        return {"status": "opencrab_sync_completed", "payload_sha256": request["payload_sha256"], "synced_counts": request["counts"], "opencrab_result_id": "fake-opencrab-result-retry"}
 
     monkeypatch.setattr(routes, "_invoke_paperclip_opencrab_live_runner", fake_invoke)
     handler = DummyHandler()
@@ -1185,6 +1227,8 @@ def test_research_intake_paperclip_opencrab_live_runner_ui_controls_exist():
     assert "function runResearchIntakeOpenCrabLiveRunner" in boot
     assert "/api/research-intake/opencrab-live-runner" in boot
     assert "opencrab_live_runner_result" in boot
+    assert "opencrab_live_runner_success_verification" in boot
+    assert "success verification" in boot
     assert "researchIntakeOpenCrabLiveRunnerRetry" in html
     assert "opencrab_live_runner_failure" in boot
     assert "retry_required=true" in boot
