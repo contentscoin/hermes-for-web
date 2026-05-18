@@ -37,6 +37,7 @@ def test_research_intake_routes_are_registered():
     assert "/api/research-intake/paperclip-reflection-live-runner" in routes
     assert "/api/research-intake/promotion-completion-summary" in routes
     assert "/api/research-intake/promotion-completion-summary-export" in routes
+    assert "/api/research-intake/safety-ladder-progress" in routes
     assert "_handle_research_intake_image_draft" in routes
     assert "_handle_research_intake_review" in routes
 
@@ -2285,6 +2286,64 @@ def test_research_intake_promotion_completion_summary_export_ui_controls_exist()
     assert "/api/research-intake/promotion-completion-summary-export" in boot
     assert "completion_summary.md" in boot
     assert "completion_summary.json" in boot
+
+
+def test_research_intake_safety_ladder_progress_reports_steps_read_only(tmp_path, monkeypatch):
+    import api.routes as routes
+
+    package_dir = _prepare_opencrab_execution_package(tmp_path)
+    monkeypatch.setattr(routes, "STATE_DIR", tmp_path)
+    promotion_dir = package_dir / "promotion"
+    (promotion_dir / "opencrab_live_runner_success_verification.json").write_text(json.dumps({"status": "opencrab_live_runner_success_verified", "checks": {"ok": True}}), encoding="utf-8")
+    (promotion_dir / "neo4j_write_success_verification.json").write_text(json.dumps({"status": "neo4j_write_success_verified", "checks": {"ok": True}}), encoding="utf-8")
+    handler = DummyHandler()
+    routes._handle_research_intake_safety_ladder_progress(handler, {"package_id": "research-intake-test-package"})
+
+    payload = handler.json_payload()
+    assert handler.status == 200
+    assert payload["status"] == "safety_ladder_in_progress"
+    assert payload["read_only_progress"] is True
+    assert payload["external_mutations"] == {"opencrab_sync": False, "neo4j_write": False, "paperclip_reflection": False}
+    assert payload["summary"]["total_steps"] >= 30
+    assert payload["summary"]["completed_steps"] >= 2
+    assert payload["summary"]["next_incomplete_step"]["id"] == "paperclip_reflection_success_verification"
+    ids = [step["id"] for step in payload["steps"]]
+    assert "opencrab_live_runner_success_verification" in ids
+    assert "neo4j_write_success_verification" in ids
+    assert "paperclip_reflection_success_verification" in ids
+    assert "completion_summary_export" in ids
+    assert next(step for step in payload["steps"] if step["id"] == "opencrab_live_runner_success_verification")["state"] == "complete"
+    assert next(step for step in payload["steps"] if step["id"] == "paperclip_reflection_success_verification")["state"] == "missing"
+
+
+def test_research_intake_safety_ladder_progress_reports_completed_when_all_artifacts_exist(tmp_path, monkeypatch):
+    import api.routes as routes
+
+    package_dir = _prepare_opencrab_execution_package(tmp_path)
+    monkeypatch.setattr(routes, "STATE_DIR", tmp_path)
+    _write_completion_summary_verifications(package_dir)
+    promotion_dir = package_dir / "promotion"
+    (promotion_dir / "completion_summary.json").write_text(json.dumps({"summary": {"status": "promotion_completed_verified"}}), encoding="utf-8")
+    (promotion_dir / "completion_summary.md").write_text("# Research Intake Completion Summary\n", encoding="utf-8")
+    handler = DummyHandler()
+    routes._handle_research_intake_safety_ladder_progress(handler, {"package_id": "research-intake-test-package"})
+
+    payload = handler.json_payload()
+    assert handler.status == 200
+    assert payload["status"] == "safety_ladder_completed"
+    assert payload["summary"]["next_incomplete_step"] is None
+    assert payload["summary"]["critical_complete"] is True
+    assert payload["external_mutations"] == {"opencrab_sync": False, "neo4j_write": False, "paperclip_reflection": False}
+
+
+def test_research_intake_safety_ladder_progress_ui_controls_exist():
+    html = read("static/index.html")
+    boot = read("static/boot.js")
+    assert "researchIntakeSafetyLadderProgress" in html
+    assert "function loadResearchIntakeSafetyLadderProgress" in boot
+    assert "/api/research-intake/safety-ladder-progress" in boot
+    assert "safety_ladder_completed" in boot
+    assert "next_incomplete_step" in boot
 
 
 def test_research_intake_paperclip_opencrab_live_runner_health_reports_missing_url_without_mutation(monkeypatch):

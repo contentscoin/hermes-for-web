@@ -531,6 +531,9 @@ def handle_post(handler, parsed) -> bool:
     if parsed.path == '/api/research-intake/promotion-completion-summary-export':
         return _handle_research_intake_promotion_completion_summary_export(handler, body)
 
+    if parsed.path == '/api/research-intake/safety-ladder-progress':
+        return _handle_research_intake_safety_ladder_progress(handler, body)
+
     # ── Workspace management (POST) ──
     if parsed.path == '/api/workspaces/add':
         return _handle_workspace_add(handler, body)
@@ -2502,6 +2505,127 @@ def _handle_research_intake_promotion_completion_summary_export(handler, body):
             'summary': summary,
             'external_mutations': external_mutations,
         }, status=200)
+    except FileNotFoundError as e:
+        return bad(handler, str(e), 404)
+    except (ValueError, PermissionError, OSError, json.JSONDecodeError) as e:
+        return bad(handler, str(e), 400)
+    except Exception as e:
+        return bad(handler, str(e), 500)
+
+
+RESEARCH_INTAKE_SAFETY_LADDER_STEPS = [
+    ('image_draft_package', 'manifest.json', None, 'Image draft package'),
+    ('visual_evidence_review', 'review/visual_evidence_review.md', None, 'Visual evidence review'),
+    ('promotion_approval_record', 'promotion/approval_decision.json', None, 'Promotion approval record'),
+    ('execution_plan', 'promotion/execution_plan.json', None, 'Execution plan'),
+    ('execution_report', 'promotion/execution_report.md', None, 'Final execution decision report'),
+    ('final_execution_approval_prompt', 'promotion/final_execution_approval_prompt.json', None, 'Final execution approval prompt'),
+    ('opencrab_execution_request', 'promotion/opencrab_execution_request.json', None, 'OpenCrab dry-run execution request'),
+    ('opencrab_live_sync_contract', 'promotion/opencrab_live_sync_contract.json', None, 'OpenCrab live sync bridge contract'),
+    ('opencrab_connector_run_result', 'promotion/opencrab_connector_run_result.json', None, 'OpenCrab connector dry-run adapter'),
+    ('opencrab_runner_approval', 'promotion/opencrab_runner_approval.json', None, 'OpenCrab runner approval gate'),
+    ('opencrab_live_runner_preflight', 'promotion/opencrab_live_runner_preflight.json', None, 'OpenCrab live runner preflight'),
+    ('opencrab_live_runner_stub_result', 'promotion/opencrab_live_runner_stub_result.json', None, 'OpenCrab live runner stub'),
+    ('opencrab_live_runner_final_approval_prompt', 'promotion/opencrab_live_runner_final_approval_prompt.json', None, 'OpenCrab live final approval prompt'),
+    ('opencrab_live_runner_execution_gate', 'promotion/opencrab_live_runner_execution_gate.json', None, 'OpenCrab live execution gate'),
+    ('opencrab_live_runner_result', 'promotion/opencrab_live_runner_result.json', None, 'OpenCrab live runner result'),
+    ('opencrab_live_runner_success_verification', 'promotion/opencrab_live_runner_success_verification.json', 'opencrab_live_runner_success_verified', 'OpenCrab success verification'),
+    ('neo4j_write_approval_gate', 'promotion/neo4j_write_approval_gate.json', None, 'Neo4j write approval gate'),
+    ('neo4j_write_runner_stub_result', 'promotion/neo4j_write_runner_stub_result.json', None, 'Neo4j write runner stub'),
+    ('neo4j_write_execution_gate', 'promotion/neo4j_write_execution_gate.json', None, 'Neo4j write execution gate'),
+    ('neo4j_write_live_runner_result', 'promotion/neo4j_write_live_runner_result.json', None, 'Neo4j write live runner result'),
+    ('neo4j_write_success_verification', 'promotion/neo4j_write_success_verification.json', 'neo4j_write_success_verified', 'Neo4j write success verification'),
+    ('paperclip_reflection_approval_gate', 'promotion/paperclip_reflection_approval_gate.json', None, 'Paperclip reflection approval gate'),
+    ('paperclip_reflection_runner_stub_result', 'promotion/paperclip_reflection_runner_stub_result.json', None, 'Paperclip reflection runner stub'),
+    ('paperclip_reflection_execution_gate', 'promotion/paperclip_reflection_execution_gate.json', None, 'Paperclip reflection execution gate'),
+    ('paperclip_reflection_live_runner_result', 'promotion/paperclip_reflection_live_runner_result.json', None, 'Paperclip reflection live runner result'),
+    ('paperclip_reflection_success_verification', 'promotion/paperclip_reflection_success_verification.json', 'paperclip_reflection_success_verified', 'Paperclip reflection success verification'),
+    ('promotion_completion_summary', 'promotion/completion_summary.json', None, 'Completion summary JSON export'),
+    ('completion_summary_export', 'promotion/completion_summary.md', None, 'Completion summary Markdown export'),
+    ('opencrab_live_runner_failure_guard', 'promotion/opencrab_live_runner_failure.json', None, 'Optional OpenCrab failure artifact/retry guard'),
+    ('neo4j_write_failure_guard', 'promotion/neo4j_write_live_runner_failure.json', None, 'Optional Neo4j failure artifact/retry guard'),
+    ('paperclip_reflection_failure_guard', 'promotion/paperclip_reflection_live_runner_failure.json', None, 'Optional Paperclip failure artifact/retry guard'),
+]
+
+CRITICAL_SAFETY_LADDER_STEP_IDS = {
+    'opencrab_live_runner_success_verification',
+    'neo4j_write_success_verification',
+    'paperclip_reflection_success_verification',
+    'promotion_completion_summary',
+    'completion_summary_export',
+}
+
+
+def _safe_step_json(path):
+    if not path.exists() or path.suffix.lower() != '.json':
+        return None
+    try:
+        return json.loads(path.read_text(encoding='utf-8'))
+    except Exception:
+        return None
+
+
+def _handle_research_intake_safety_ladder_progress(handler, body):
+    external_mutations = {'opencrab_sync': False, 'neo4j_write': False, 'paperclip_reflection': False}
+    try:
+        package_dir = _safe_research_intake_package_dir(str(body.get('package_id') or body.get('package_dir') or ''))
+        steps = []
+        completed = 0
+        critical_complete = True
+        next_incomplete = None
+        for order, (step_id, rel_path, expected_status, label) in enumerate(RESEARCH_INTAKE_SAFETY_LADDER_STEPS, 1):
+            artifact_path = package_dir / rel_path
+            exists = artifact_path.exists()
+            data = _safe_step_json(artifact_path)
+            actual_status = data.get('status') if isinstance(data, dict) else None
+            checks = data.get('checks') if isinstance(data, dict) and isinstance(data.get('checks'), dict) else None
+            checks_ok = all(checks.values()) if checks else None
+            status_ok = actual_status == expected_status if expected_status else True
+            if exists and status_ok and (checks_ok is not False):
+                state = 'complete'
+                completed += 1
+            elif exists:
+                state = 'present_needs_review'
+            else:
+                state = 'missing'
+            step = {
+                'order': order,
+                'id': step_id,
+                'label': label,
+                'artifact': rel_path,
+                'artifact_path': str(artifact_path),
+                'exists': exists,
+                'state': state,
+                'expected_status': expected_status,
+                'actual_status': actual_status,
+                'checks_ok': checks_ok,
+                'critical': step_id in CRITICAL_SAFETY_LADDER_STEP_IDS,
+            }
+            steps.append(step)
+            if step['critical'] and state != 'complete':
+                critical_complete = False
+                if next_incomplete is None:
+                    next_incomplete = step
+        status = 'safety_ladder_completed' if critical_complete else 'safety_ladder_in_progress'
+        payload = {
+            'ok': True,
+            'status': status,
+            'package_id': package_dir.name,
+            'package_dir': str(package_dir),
+            'read_only_progress': True,
+            'summary': {
+                'total_steps': len(steps),
+                'completed_steps': completed,
+                'critical_steps': len(CRITICAL_SAFETY_LADDER_STEP_IDS),
+                'critical_completed_steps': sum(1 for s in steps if s['critical'] and s['state'] == 'complete'),
+                'critical_complete': critical_complete,
+                'next_incomplete_step': next_incomplete,
+            },
+            'steps': steps,
+            'external_mutations': external_mutations,
+            'note': 'This endpoint only reads local artifacts and performs no OpenCrab sync, Neo4j write, or Paperclip reflection.',
+        }
+        return j(handler, payload, status=200)
     except FileNotFoundError as e:
         return bad(handler, str(e), 404)
     except (ValueError, PermissionError, OSError, json.JSONDecodeError) as e:

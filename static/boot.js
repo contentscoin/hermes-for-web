@@ -1118,6 +1118,8 @@ function _researchIntakeSetApprovalEnabled(enabled){
   if(completionSummaryBtn) completionSummaryBtn.disabled=!enabled;
   const completionSummaryExportBtn=$('researchIntakePromotionCompletionSummaryExport');
   if(completionSummaryExportBtn) completionSummaryExportBtn.disabled=!enabled;
+  const safetyLadderProgressBtn=$('researchIntakeSafetyLadderProgress');
+  if(safetyLadderProgressBtn) safetyLadderProgressBtn.disabled=!enabled;
 }
 function _researchIntakeRenderReview(data){
   const panel=$('researchIntakeReviewPanel');
@@ -1695,6 +1697,29 @@ async function loadResearchIntakePromotionCompletionSummary(){
     return null;
   }
 }
+async function loadResearchIntakeSafetyLadderProgress(){
+  const packageId=_researchIntakeCurrentPackage;
+  if(!packageId){_researchIntakeSetResult('먼저 safety ladder 대상 package를 선택하세요.', true);return null;}
+  _researchIntakeSetResult('safety ladder 진행률을 읽는 중... 외부 mutation은 하지 않습니다.', false);
+  try{
+    const res=await fetch(new URL('/api/research-intake/safety-ladder-progress',location.origin).href,{
+      method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({package_id:packageId})
+    });
+    const data=await res.json();
+    if(!res.ok) throw new Error(data.error||'safety ladder progress failed');
+    const panel=$('researchIntakeReviewPanel');
+    const next=data.summary&&data.summary.next_incomplete_step;
+    const rows=(data.steps||[]).map(s=>`${s.order}. ${s.state==='complete'?'✅':s.state==='present_needs_review'?'⚠️':'⬜'} ${s.label} [${s.id}]${s.critical?' *critical':''}\n   artifact: ${s.artifact}\n   state: ${s.state}${s.actual_status?' / status: '+s.actual_status:''}`).join('\n');
+    if(panel){
+      panel.innerHTML=`<div class="research-intake-final-report"><strong>Safety ladder progress</strong><div>${esc(data.status||'safety_ladder_in_progress')}</div><pre>${esc(`Completed: ${(data.summary||{}).completed_steps}/${(data.summary||{}).total_steps}\nCritical complete: ${(data.summary||{}).critical_complete}\nNext incomplete step: ${next?next.id:'none'}\n\n${rows}\n\nMutation truthfulness:\nOpenCrab sync: not executed by progress tracker\nNeo4j write: not executed by progress tracker\nPaperclip reflection: not executed by progress tracker`)}</pre></div>`;
+    }
+    _researchIntakeSetResult(data.status==='safety_ladder_completed'?'safety_ladder_completed · 필수 검증/export 단계 완료':'safety ladder 진행 중 · next_incomplete_step: '+(next?next.id:'unknown'), false);
+    return data;
+  }catch(e){
+    _researchIntakeSetResult('safety ladder progress 실패: '+(e.message||e), true);
+    return null;
+  }
+}
 async function exportResearchIntakePromotionCompletionSummary(){
   const packageId=_researchIntakeCurrentPackage;
   if(!packageId){_researchIntakeSetResult('먼저 completion summary 대상 package를 선택하세요.', true);return null;}
@@ -1786,5 +1811,6 @@ window.createResearchIntakePaperclipReflectionExecutionGate=createResearchIntake
 window.runResearchIntakePaperclipReflectionLiveRunner=runResearchIntakePaperclipReflectionLiveRunner;
 window.loadResearchIntakePromotionCompletionSummary=loadResearchIntakePromotionCompletionSummary;
 window.exportResearchIntakePromotionCompletionSummary=exportResearchIntakePromotionCompletionSummary;
+window.loadResearchIntakeSafetyLadderProgress=loadResearchIntakeSafetyLadderProgress;
 window.createResearchIntakeFinalApprovalPrompt=createResearchIntakeFinalApprovalPrompt;
 window.createResearchIntakeExecutionPlan=createResearchIntakeExecutionPlan;

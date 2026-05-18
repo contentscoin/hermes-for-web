@@ -465,3 +465,7 @@ Completed: added a read-only final dashboard endpoint and WebUI control that sum
 ### Research Intake completion summary export
 
 Completed: added a local-only completion summary export for `completion_summary.json` and `completion_summary.md`. Remaining optional work is polish-only: add download/open-file affordances or a consolidated Research Intake dashboard; no further mutation steps are required for this safety ladder.
+
+### Research Intake safety ladder progress tracker
+
+Completed: added a read-only progress tracker for the Research Intake safety ladder. It gives operators a one-screen view of artifact progress and the next incomplete critical step without triggering OpenCrab, Neo4j, or Paperclip mutations. Remaining work is optional UX polish only.

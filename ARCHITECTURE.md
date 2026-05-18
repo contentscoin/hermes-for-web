@@ -1716,3 +1716,7 @@ After a connector reports `opencrab_sync_completed`, the live runner writes `pro
 ### Research Intake completion summary export
 
 `POST /api/research-intake/promotion-completion-summary-export` writes local operator artifacts only after `/api/research-intake/promotion-completion-summary` reports `promotion_completed_verified`. It creates `promotion/completion_summary.json` and `promotion/completion_summary.md`, preserving the read-only summary and explicitly reporting no OpenCrab sync, Neo4j write, or Paperclip reflection during export. Incomplete summaries return HTTP 409 and write nothing.
+
+### Research Intake safety ladder progress tracker
+
+`POST /api/research-intake/safety-ladder-progress` is a read-only operator dashboard endpoint. It enumerates the Research Intake safety ladder artifacts, reports each step as `complete`, `present_needs_review`, or `missing`, identifies the next incomplete critical step, and returns `safety_ladder_completed` only when the critical final verification/export artifacts are complete. It performs no OpenCrab sync, Neo4j write, or Paperclip reflection.

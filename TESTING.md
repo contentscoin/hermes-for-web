@@ -1861,3 +1861,7 @@ Covered in `tests/test_research_intake_webui.py`: route registration, missing ve
 ### Research Intake completion summary export tests
 
 Covered in `tests/test_research_intake_webui.py`: route registration, verified-summary export to local JSON/MD artifacts, incomplete-summary blocking with HTTP 409, and WebUI button/function wiring. Smoke tests should seed the three success verification artifacts, call `/api/research-intake/promotion-completion-summary-export`, confirm `completion_summary.json/md` exist, and confirm returned mutation flags are all false.
+
+### Research Intake safety ladder progress tests
+
+Covered in `tests/test_research_intake_webui.py`: route registration, read-only progress state with a missing Paperclip verification, completed state when final verification/export artifacts exist, and WebUI button/function wiring. Smoke tests should seed selected promotion artifacts, call `/api/research-intake/safety-ladder-progress`, confirm `next_incomplete_step`, and confirm all returned mutation flags are false.
