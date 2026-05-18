@@ -1780,3 +1780,8 @@ The runner approval gate tests create a package-local live sync contract, call `
 ### Research Intake live runner preflight tests
 
 The live runner preflight tests create a live sync contract and runner approval artifact, call `/api/research-intake/preflight-opencrab-runner`, and assert checksum verification, allowlist verification, source JSONL count verification, and false mutation flags. A tampered approval checksum must be rejected with no preflight-ready artifact treated as executable.
+
+
+### Research Intake live runner stub tests
+
+The live runner stub tests prepare a full contract → approval → preflight chain, call `/api/research-intake/run-opencrab-live-stub`, and assert the fixed request/response schema plus false mutation flags. Missing preflight must fail with HTTP 409 and must not create an executable result.

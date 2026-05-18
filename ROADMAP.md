@@ -384,3 +384,8 @@ A live-run approval gate now records connector allowlist approval and a payload 
 ### Completed: OpenCrab live runner preflight verifier
 
 A preflight verifier now rechecks approval, payload checksum, connector allowlist, and source JSONL counts before any real OpenCrab runner can be attached. The next step is a separate Paperclip/OpenCrab live runner that refuses to execute unless the preflight artifact is present and fresh.
+
+
+### Completed: Paperclip OpenCrab live runner stub
+
+A live runner stub now fixes the exact Paperclip/OpenCrab connector boundary and result artifact shape without network mutation. The next step is the real Paperclip OpenCrab runner, guarded by the stub/preflight artifacts and a final explicit live execution approval.

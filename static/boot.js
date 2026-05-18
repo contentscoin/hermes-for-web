@@ -1086,6 +1086,8 @@ function _researchIntakeSetApprovalEnabled(enabled){
   if(runnerGateBtn) runnerGateBtn.disabled=!enabled;
   const preflightBtn=$('researchIntakePreflightOpenCrabRunner');
   if(preflightBtn) preflightBtn.disabled=!enabled;
+  const liveStubBtn=$('researchIntakeRunOpenCrabLiveStub');
+  if(liveStubBtn) liveStubBtn.disabled=!enabled;
 }
 function _researchIntakeRenderReview(data){
   const panel=$('researchIntakeReviewPanel');
@@ -1214,6 +1216,33 @@ async function createResearchIntakeOpenCrabExecutionRequest(executeLive=false){
     return data;
   }catch(e){
     _researchIntakeSetResult('OpenCrab 실행 준비 실패: '+(e.message||e), true);
+    return null;
+  }
+}
+async function runResearchIntakeOpenCrabLiveStub(){
+  const packageId=_researchIntakeCurrentPackage;
+  if(!packageId){_researchIntakeSetResult('먼저 OpenCrab live runner preflight를 완료하세요.', true);return null;}
+  _researchIntakeSetResult('Paperclip OpenCrab live runner stub 준비 중... 실제 sync는 하지 않습니다.', false);
+  try{
+    const res=await fetch(new URL('/api/research-intake/run-opencrab-live-stub',location.origin).href,{
+      method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+        package_id:packageId,
+        connector:'paperclip_opencrab_plugin',
+        runner_mode:'stub',
+        operator:'webui-user'
+      })
+    });
+    const data=await res.json();
+    if(!res.ok||!data.ok) throw new Error(data.error||'opencrab_live_runner_stub_result failed');
+    const panel=$('researchIntakeReviewPanel');
+    if(panel){
+      const req=data.request_schema||{};
+      panel.innerHTML=`<div class="research-intake-final-report"><strong>Paperclip OpenCrab live runner stub</strong><div>${esc(data.status||'opencrab_live_runner_stub_ready')} · tool: ${esc(req.tool||'paperclip.opencrab.sync_research_intake')} · actual sync not executed</div><pre>${esc(`Payload SHA-256: ${data.payload_sha256||''}\nResult artifact: opencrab_live_runner_stub_result\n\nOpenCrab sync: not executed\nNeo4j write: not executed\nPaperclip reflection: not executed\n\nThis only fixes the live connector request/response schema.`)}</pre></div>`;
+    }
+    _researchIntakeSetResult('Paperclip OpenCrab live runner stub 준비 완료 · 실제 sync 없음', false);
+    return data;
+  }catch(e){
+    _researchIntakeSetResult('Paperclip OpenCrab live runner stub 실패: '+(e.message||e), true);
     return null;
   }
 }
@@ -1353,5 +1382,6 @@ window.createResearchIntakeOpenCrabExecutionRequest=createResearchIntakeOpenCrab
 window.runResearchIntakeOpenCrabConnector=runResearchIntakeOpenCrabConnector;
 window.approveResearchIntakeOpenCrabRunner=approveResearchIntakeOpenCrabRunner;
 window.preflightResearchIntakeOpenCrabRunner=preflightResearchIntakeOpenCrabRunner;
+window.runResearchIntakeOpenCrabLiveStub=runResearchIntakeOpenCrabLiveStub;
 window.createResearchIntakeFinalApprovalPrompt=createResearchIntakeFinalApprovalPrompt;
 window.createResearchIntakeExecutionPlan=createResearchIntakeExecutionPlan;

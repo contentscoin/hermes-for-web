@@ -1635,3 +1635,8 @@ The Research Intake WebUI now separates human review approval from execution. `P
 ### Research Intake OpenCrab live runner preflight verifier
 
 `POST /api/research-intake/preflight-opencrab-runner` verifies the final live-run inputs without mutation. It requires both `promotion/opencrab_live_sync_contract.json` and `promotion/opencrab_runner_approval.json`, recomputes the canonical payload SHA-256, validates connector allowlist and `runner_mode=live`, parses the source JSONL files, compares source counts to the contract, and writes `promotion/opencrab_live_runner_preflight.json` plus `.md`. It does not perform OpenCrab sync, Neo4j write, or Paperclip reflection.
+
+
+### Research Intake Paperclip OpenCrab live runner stub
+
+`POST /api/research-intake/run-opencrab-live-stub` fixes the real connector boundary without performing the connector call. It requires `opencrab_live_runner_preflight.json`, rechecks contract/approval/preflight checksums, accepts only `connector=paperclip_opencrab_plugin` and `runner_mode=stub`, writes `promotion/opencrab_live_runner_stub_result.json` plus `.md`, and records the intended request schema (`paperclip.opencrab.sync_research_intake`) and expected response schema. All mutation flags remain false.
