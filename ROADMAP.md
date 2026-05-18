@@ -457,3 +457,7 @@ Completed: added the locked Paperclip reflection execution gate after the runner
 ### Research Intake Paperclip reflection live runner
 
 Completed: added Paperclip reflection live runner invocation with failure artifact/retry guard and success verification. The final reflected state is only trusted after `paperclip_reflection_success_verification.json` reports `paperclip_reflection_success_verified`. Next step: add an optional package-level final promotion completion summary/dashboard that reads OpenCrab, Neo4j, and Paperclip verification artifacts without creating new mutations.
+
+### Research Intake promotion completion summary
+
+Completed: added a read-only final dashboard endpoint and WebUI control that summarizes OpenCrab, Neo4j, and Paperclip success verification artifacts without creating any new mutation. Next step: optionally add export/share affordances for the completion summary, but keep them read-only unless separately approved.

@@ -1708,3 +1708,7 @@ After a connector reports `opencrab_sync_completed`, the live runner writes `pro
 ### Research Intake Paperclip reflection live runner
 
 `POST /api/research-intake/paperclip-reflection-live-runner` requires `promotion/paperclip_reflection_execution_gate.json`, `HERMES_PAPERCLIP_ENABLE_REFLECTION_RUNNER=true`, exact approval phrase `EXECUTE_PAPERCLIP_REFLECTION_LIVE_RUNNER`, and an optional matching payload checksum. It invokes `_invoke_paperclip_reflection_live_runner`; the default helper requires `HERMES_PAPERCLIP_REFLECTION_RUNNER_URL` and tests monkeypatch it to avoid network mutation. Failures write `paperclip_reflection_live_runner_failure.json/md` and keep `paperclip_reflection=false`; successes write `paperclip_reflection_live_runner_result.json/md` plus `paperclip_reflection_success_verification.json/md` checking status, payload checksum, reflected counts, and `paperclip_reflection_id`.
+
+### Research Intake promotion completion summary
+
+`POST /api/research-intake/promotion-completion-summary` is a read-only operator summary. It reads `promotion/opencrab_live_runner_success_verification.json`, `promotion/neo4j_write_success_verification.json`, and `promotion/paperclip_reflection_success_verification.json`; verifies expected statuses, all nested checks, payload SHA-256 consistency, and count consistency; and returns `promotion_completed_verified` only when every verification artifact agrees. It performs no OpenCrab sync, Neo4j write, or Paperclip reflection and reports all `external_mutations` as false for the summary call.

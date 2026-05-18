@@ -524,6 +524,9 @@ def handle_post(handler, parsed) -> bool:
     if parsed.path == '/api/research-intake/paperclip-reflection-live-runner':
         return _handle_research_intake_paperclip_reflection_live_runner(handler, body)
 
+    if parsed.path == '/api/research-intake/promotion-completion-summary':
+        return _handle_research_intake_promotion_completion_summary(handler, body)
+
     # ── Workspace management (POST) ──
     if parsed.path == '/api/workspaces/add':
         return _handle_workspace_add(handler, body)
@@ -2331,6 +2334,83 @@ def _handle_research_intake_paperclip_reflection_live_runner(handler, body):
         verification, verification_path, verification_report_path = _write_paperclip_reflection_success_verification(promotion_dir, package_id=package_dir.name, payload_sha256=payload_sha, request_payload=request_payload, runner_result=runner_result, mutations=success_mutations)
         http_status = 200 if verification['status'] == 'paperclip_reflection_success_verified' else 502
         return j(handler, {'ok': http_status == 200, 'package_id': package_dir.name, 'package_dir': str(package_dir), 'status': result['status'], 'payload_sha256': payload_sha, 'paperclip_reflection_id': runner_result.get('paperclip_reflection_id'), 'runner_result': runner_result, 'result_path': str(result_path), 'report_path': str(report_path), 'success_verification': verification, 'verification_path': str(verification_path), 'verification_report_path': str(verification_report_path), 'external_mutations': success_mutations if http_status == 200 else base_mutations}, status=http_status)
+    except FileNotFoundError as e:
+        return bad(handler, str(e), 404)
+    except (ValueError, PermissionError, OSError, json.JSONDecodeError) as e:
+        return bad(handler, str(e), 400)
+    except Exception as e:
+        return bad(handler, str(e), 500)
+
+
+def _completion_stage_verified(data, expected_status):
+    return bool(data) and data.get('status') == expected_status and all((data.get('checks') or {}).values())
+
+
+def _counts_from_verification(data):
+    if not data:
+        return None
+    return data.get('request_counts') or data.get('synced_counts') or data.get('written_counts') or data.get('reflected_counts') or {}
+
+
+def _handle_research_intake_promotion_completion_summary(handler, body):
+    external_mutations = {'opencrab_sync': False, 'neo4j_write': False, 'paperclip_reflection': False}
+    try:
+        package_dir = _safe_research_intake_package_dir(str(body.get('package_id') or body.get('package_dir') or ''))
+        promotion_dir = package_dir / 'promotion'
+        specs = {
+            'opencrab': ('opencrab_live_runner_success_verification.json', 'opencrab_live_runner_success_verified'),
+            'neo4j': ('neo4j_write_success_verification.json', 'neo4j_write_success_verified'),
+            'paperclip': ('paperclip_reflection_success_verification.json', 'paperclip_reflection_success_verified'),
+        }
+        verifications = {}
+        missing = []
+        for key, (filename, _status) in specs.items():
+            path = promotion_dir / filename
+            if not path.exists():
+                missing.append(filename)
+                verifications[key] = None
+                continue
+            item = json.loads(path.read_text(encoding='utf-8'))
+            item['_artifact_path'] = str(path)
+            verifications[key] = item
+        all_present = not missing
+        opencrab_verified = _completion_stage_verified(verifications.get('opencrab'), specs['opencrab'][1])
+        neo4j_verified = _completion_stage_verified(verifications.get('neo4j'), specs['neo4j'][1])
+        paperclip_verified = _completion_stage_verified(verifications.get('paperclip'), specs['paperclip'][1])
+        payloads = [v.get('payload_sha256') for v in verifications.values() if v]
+        payload_consistent = bool(payloads) and len(set(payloads)) == 1 and all_present
+        counts = [_counts_from_verification(v) for v in verifications.values() if v]
+        counts_consistent = bool(counts) and len({json.dumps(c, sort_keys=True) for c in counts}) == 1 and all_present
+        checks = {
+            'all_verifications_present': all_present,
+            'opencrab_verified': opencrab_verified,
+            'neo4j_verified': neo4j_verified,
+            'paperclip_verified': paperclip_verified,
+            'payload_sha256_consistent': payload_consistent,
+            'counts_consistent': counts_consistent,
+        }
+        complete = all(checks.values())
+        summary = {
+            'ok': True,
+            'package_id': package_dir.name,
+            'package_dir': str(package_dir),
+            'status': 'promotion_completed_verified' if complete else 'promotion_completion_incomplete',
+            'complete': complete,
+            'payload_sha256': payloads[0] if payload_consistent else None,
+            'counts': counts[0] if counts_consistent else None,
+            'ids': {
+                'opencrab_result_id': (verifications.get('opencrab') or {}).get('opencrab_result_id'),
+                'neo4j_result_id': (verifications.get('neo4j') or {}).get('neo4j_result_id'),
+                'paperclip_reflection_id': (verifications.get('paperclip') or {}).get('paperclip_reflection_id'),
+            },
+            'checks': checks,
+            'missing_artifacts': missing,
+            'artifacts': {key: (value or {}).get('_artifact_path') for key, value in verifications.items()},
+            'external_mutations': external_mutations,
+            'read_only_summary': True,
+            'note': 'This endpoint only reads verification artifacts and performs no OpenCrab sync, Neo4j write, or Paperclip reflection.',
+        }
+        return j(handler, summary, status=200)
     except FileNotFoundError as e:
         return bad(handler, str(e), 404)
     except (ValueError, PermissionError, OSError, json.JSONDecodeError) as e:

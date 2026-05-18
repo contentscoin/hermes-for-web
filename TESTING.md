@@ -1853,3 +1853,7 @@ Covered in `tests/test_research_intake_webui.py`: route registration, missing-st
 ### Research Intake Paperclip reflection live runner tests
 
 Covered in `tests/test_research_intake_webui.py`: route registration, missing execution gate blocking, unconfigured runner URL failure artifacts, retry guard blocking, monkeypatched success verification, WebUI button/function wiring, and mutation truthfulness. Verification requires `paperclip_reflection=false` for failures and `paperclip_reflection=true` only after `paperclip_reflection_success_verified`.
+
+### Research Intake promotion completion summary tests
+
+Covered in `tests/test_research_intake_webui.py`: route registration, missing verification artifacts, complete verified summary, checksum mismatch detection, and WebUI button/function wiring. Smoke tests should seed the three success verification artifacts in an isolated state dir and call `/api/research-intake/promotion-completion-summary`; the endpoint must remain read-only with all returned mutation flags false.

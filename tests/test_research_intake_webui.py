@@ -35,6 +35,7 @@ def test_research_intake_routes_are_registered():
     assert "/api/research-intake/paperclip-reflection-runner-stub" in routes
     assert "/api/research-intake/paperclip-reflection-execution-gate" in routes
     assert "/api/research-intake/paperclip-reflection-live-runner" in routes
+    assert "/api/research-intake/promotion-completion-summary" in routes
     assert "_handle_research_intake_image_draft" in routes
     assert "_handle_research_intake_review" in routes
 
@@ -2121,6 +2122,118 @@ def test_research_intake_paperclip_reflection_live_runner_ui_controls_exist():
     assert "EXECUTE_PAPERCLIP_REFLECTION_LIVE_RUNNER" in boot
     assert "paperclip_reflection_success_verification" in boot
     assert "paperclip_reflection_live_runner_failure" in boot
+
+
+def _write_completion_summary_verifications(package_dir, payload_sha256="sha-completion-summary"):
+    promotion_dir = package_dir / "promotion"
+    promotion_dir.mkdir(parents=True, exist_ok=True)
+    counts = {"claims": 2, "nodes": 3, "evidence": 4}
+    opencrab = {
+        "package_id": package_dir.name,
+        "status": "opencrab_live_runner_success_verified",
+        "payload_sha256": payload_sha256,
+        "opencrab_result_id": "opencrab-complete-123",
+        "request_counts": counts,
+        "synced_counts": counts,
+        "checks": {"status_completed": True, "payload_sha256_match": True, "synced_counts_match_request": True, "opencrab_result_id_present": True},
+        "external_mutations": {"opencrab_sync": True, "neo4j_write": False, "paperclip_reflection": False},
+    }
+    neo4j = {
+        "package_id": package_dir.name,
+        "status": "neo4j_write_success_verified",
+        "payload_sha256": payload_sha256,
+        "neo4j_result_id": "neo4j-complete-123",
+        "request_counts": counts,
+        "written_counts": counts,
+        "checks": {"status_completed": True, "payload_sha256_match": True, "written_counts_match_request": True, "neo4j_result_id_present": True},
+        "external_mutations": {"opencrab_sync": True, "neo4j_write": True, "paperclip_reflection": False},
+    }
+    paperclip = {
+        "package_id": package_dir.name,
+        "status": "paperclip_reflection_success_verified",
+        "payload_sha256": payload_sha256,
+        "paperclip_reflection_id": "paperclip-complete-123",
+        "request_counts": counts,
+        "reflected_counts": counts,
+        "checks": {"status_completed": True, "payload_sha256_match": True, "reflected_counts_match_request": True, "paperclip_reflection_id_present": True},
+        "external_mutations": {"opencrab_sync": True, "neo4j_write": True, "paperclip_reflection": True},
+    }
+    (promotion_dir / "opencrab_live_runner_success_verification.json").write_text(json.dumps(opencrab, indent=2), encoding="utf-8")
+    (promotion_dir / "neo4j_write_success_verification.json").write_text(json.dumps(neo4j, indent=2), encoding="utf-8")
+    (promotion_dir / "paperclip_reflection_success_verification.json").write_text(json.dumps(paperclip, indent=2), encoding="utf-8")
+    return opencrab, neo4j, paperclip
+
+
+def test_research_intake_promotion_completion_summary_requires_all_verifications(tmp_path, monkeypatch):
+    import api.routes as routes
+
+    _prepare_opencrab_execution_package(tmp_path)
+    monkeypatch.setattr(routes, "STATE_DIR", tmp_path)
+    handler = DummyHandler()
+    routes._handle_research_intake_promotion_completion_summary(handler, {"package_id": "research-intake-test-package"})
+
+    payload = handler.json_payload()
+    assert handler.status == 200
+    assert payload["status"] == "promotion_completion_incomplete"
+    assert payload["complete"] is False
+    assert payload["checks"]["all_verifications_present"] is False
+    assert payload["external_mutations"] == {"opencrab_sync": False, "neo4j_write": False, "paperclip_reflection": False}
+
+
+def test_research_intake_promotion_completion_summary_reports_complete_without_mutation(tmp_path, monkeypatch):
+    import api.routes as routes
+
+    package_dir = _prepare_opencrab_execution_package(tmp_path)
+    monkeypatch.setattr(routes, "STATE_DIR", tmp_path)
+    _write_completion_summary_verifications(package_dir)
+    handler = DummyHandler()
+    routes._handle_research_intake_promotion_completion_summary(handler, {"package_id": "research-intake-test-package"})
+
+    payload = handler.json_payload()
+    assert handler.status == 200
+    assert payload["status"] == "promotion_completed_verified"
+    assert payload["complete"] is True
+    assert payload["checks"] == {
+        "all_verifications_present": True,
+        "opencrab_verified": True,
+        "neo4j_verified": True,
+        "paperclip_verified": True,
+        "payload_sha256_consistent": True,
+        "counts_consistent": True,
+    }
+    assert payload["payload_sha256"] == "sha-completion-summary"
+    assert payload["ids"] == {"opencrab_result_id": "opencrab-complete-123", "neo4j_result_id": "neo4j-complete-123", "paperclip_reflection_id": "paperclip-complete-123"}
+    assert payload["external_mutations"] == {"opencrab_sync": False, "neo4j_write": False, "paperclip_reflection": False}
+
+
+def test_research_intake_promotion_completion_summary_detects_checksum_mismatch(tmp_path, monkeypatch):
+    import api.routes as routes
+
+    package_dir = _prepare_opencrab_execution_package(tmp_path)
+    monkeypatch.setattr(routes, "STATE_DIR", tmp_path)
+    _write_completion_summary_verifications(package_dir)
+    paperclip_path = package_dir / "promotion" / "paperclip_reflection_success_verification.json"
+    paperclip = json.loads(paperclip_path.read_text(encoding="utf-8"))
+    paperclip["payload_sha256"] = "different-sha"
+    paperclip_path.write_text(json.dumps(paperclip), encoding="utf-8")
+    handler = DummyHandler()
+    routes._handle_research_intake_promotion_completion_summary(handler, {"package_id": "research-intake-test-package"})
+
+    payload = handler.json_payload()
+    assert handler.status == 200
+    assert payload["status"] == "promotion_completion_incomplete"
+    assert payload["checks"]["payload_sha256_consistent"] is False
+    assert payload["complete"] is False
+
+
+def test_research_intake_promotion_completion_summary_ui_controls_exist():
+    html = read("static/index.html")
+    boot = read("static/boot.js")
+    assert "researchIntakePromotionCompletionSummary" in html
+    assert "function loadResearchIntakePromotionCompletionSummary" in boot
+    assert "/api/research-intake/promotion-completion-summary" in boot
+    assert "promotion_completed_verified" in boot
+    assert "payload_sha256_consistent" in boot
 
 
 def test_research_intake_paperclip_opencrab_live_runner_health_reports_missing_url_without_mutation(monkeypatch):

@@ -1114,6 +1114,8 @@ function _researchIntakeSetApprovalEnabled(enabled){
   if(paperclipReflectionExecutionGateBtn) paperclipReflectionExecutionGateBtn.disabled=!enabled;
   const paperclipReflectionLiveRunnerBtn=$('researchIntakePaperclipReflectionLiveRunner');
   if(paperclipReflectionLiveRunnerBtn) paperclipReflectionLiveRunnerBtn.disabled=!enabled;
+  const completionSummaryBtn=$('researchIntakePromotionCompletionSummary');
+  if(completionSummaryBtn) completionSummaryBtn.disabled=!enabled;
 }
 function _researchIntakeRenderReview(data){
   const panel=$('researchIntakeReviewPanel');
@@ -1667,6 +1669,30 @@ async function runResearchIntakePaperclipReflectionLiveRunner(){
     return null;
   }
 }
+async function loadResearchIntakePromotionCompletionSummary(){
+  const packageId=_researchIntakeCurrentPackage;
+  if(!packageId){_researchIntakeSetResult('먼저 Research Intake package를 선택하세요.', true);return null;}
+  _researchIntakeSetResult('최종 completion summary 확인 중... verification artifact만 읽고 mutation은 하지 않습니다.', false);
+  try{
+    const res=await fetch(new URL('/api/research-intake/promotion-completion-summary',location.origin).href,{
+      method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({package_id:packageId})
+    });
+    const data=await res.json();
+    if(!res.ok||!data.ok) throw new Error(data.error||'promotion completion summary failed');
+    const panel=$('researchIntakeReviewPanel');
+    if(panel){
+      const checks=data.checks||{};
+      const ids=data.ids||{};
+      const counts=data.counts||{};
+      panel.innerHTML=`<div class="research-intake-final-report"><strong>Research Intake completion summary</strong><div>${esc(data.status||'promotion_completion_incomplete')} · complete=${data.complete===true}</div><pre>${esc(`Status: ${data.status||''}\nPayload SHA-256: ${data.payload_sha256||''}\nCounts: ${JSON.stringify(counts)}\nOpenCrab result id: ${ids.opencrab_result_id||''}\nNeo4j result id: ${ids.neo4j_result_id||''}\nPaperclip reflection id: ${ids.paperclip_reflection_id||''}\n\nChecks:\nAll verifications present: ${checks.all_verifications_present===true}\nOpenCrab verified: ${checks.opencrab_verified===true}\nNeo4j verified: ${checks.neo4j_verified===true}\nPaperclip verified: ${checks.paperclip_verified===true}\npayload_sha256_consistent: ${checks.payload_sha256_consistent===true}\nCounts consistent: ${checks.counts_consistent===true}\n\nRead-only summary: true\nMutations:\nOpenCrab sync: not executed here\nNeo4j write: not executed here\nPaperclip reflection: not executed here`)}</pre></div>`;
+    }
+    _researchIntakeSetResult(data.status==='promotion_completed_verified'?'Research Intake promotion completion verified':'Research Intake promotion incomplete · missing/checksum/count artifact 확인', data.status!=='promotion_completed_verified');
+    return data;
+  }catch(e){
+    _researchIntakeSetResult('최종 completion summary 실패: '+(e.message||e), true);
+    return null;
+  }
+}
 async function createResearchIntakeFinalApprovalPrompt(){
   const packageId=_researchIntakeCurrentPackage;
   if(!packageId){_researchIntakeSetResult('먼저 최종 실행 decision report를 생성하세요.', true);return null;}
@@ -1735,5 +1761,6 @@ window.createResearchIntakePaperclipReflectionApprovalGate=createResearchIntakeP
 window.runResearchIntakePaperclipReflectionRunnerStub=runResearchIntakePaperclipReflectionRunnerStub;
 window.createResearchIntakePaperclipReflectionExecutionGate=createResearchIntakePaperclipReflectionExecutionGate;
 window.runResearchIntakePaperclipReflectionLiveRunner=runResearchIntakePaperclipReflectionLiveRunner;
+window.loadResearchIntakePromotionCompletionSummary=loadResearchIntakePromotionCompletionSummary;
 window.createResearchIntakeFinalApprovalPrompt=createResearchIntakeFinalApprovalPrompt;
 window.createResearchIntakeExecutionPlan=createResearchIntakeExecutionPlan;
