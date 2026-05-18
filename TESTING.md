@@ -1815,3 +1815,8 @@ Failure/retry tests monkeypatch `_invoke_paperclip_opencrab_live_runner` to rais
 ### Research Intake live runner success verification tests
 
 Success verification tests monkeypatch `_invoke_paperclip_opencrab_live_runner` to return completed connector responses. Verify `opencrab_live_runner_success_verification.json/md`, checksum/count/result-id checks, and that count mismatch returns `opencrab_live_runner_success_verification_failed` with HTTP 502.
+
+
+### Research Intake Neo4j write approval gate tests
+
+Neo4j gate tests seed `opencrab_live_runner_success_verification.json`, then verify missing verification blocks with HTTP 409, wrong phrase returns HTTP 403, and a valid request writes `neo4j_write_approval_gate.json/md` while keeping `neo4j_write=false` and `paperclip_reflection=false`.

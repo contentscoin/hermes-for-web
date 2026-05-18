@@ -419,3 +419,8 @@ The live runner now records failed pre-confirmation bridge attempts and blocks a
 ### Completed: OpenCrab live runner success verification artifact
 
 The live runner now records a post-sync verification artifact before any future Neo4j write or Paperclip reflection stage. Success is only considered verified when connector status, payload checksum, synced counts, and result id all match expectations.
+
+
+### Completed: Neo4j write approval gate after OpenCrab success verification
+
+After OpenCrab live runner success verification, the WebUI can now create a Neo4j write approval gate artifact. This records readiness and the next required approval phrase, but does not execute Neo4j writes or Paperclip reflection.

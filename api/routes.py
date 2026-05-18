@@ -500,6 +500,9 @@ def handle_post(handler, parsed) -> bool:
     if parsed.path == '/api/research-intake/opencrab-live-runner-health':
         return _handle_research_intake_opencrab_live_runner_health(handler, body)
 
+    if parsed.path == '/api/research-intake/neo4j-write-approval-gate':
+        return _handle_research_intake_neo4j_write_approval_gate(handler, body)
+
     # ── Workspace management (POST) ──
     if parsed.path == '/api/workspaces/add':
         return _handle_workspace_add(handler, body)
@@ -1361,6 +1364,128 @@ def _probe_paperclip_opencrab_live_runner(runner_url):
     with urllib.request.urlopen(health_url, timeout=5) as resp:
         payload = json.loads(resp.read().decode('utf-8') or '{}')
     return payload if isinstance(payload, dict) else {'raw_result': payload}
+
+
+def _handle_research_intake_neo4j_write_approval_gate(handler, body):
+    no_mutations = {
+        'opencrab_sync': False,
+        'neo4j_write': False,
+        'paperclip_reflection': False,
+    }
+    post_opencrab_mutations = {
+        'opencrab_sync': True,
+        'neo4j_write': False,
+        'paperclip_reflection': False,
+    }
+    try:
+        package_dir = _safe_research_intake_package_dir(str(body.get('package_id') or body.get('package_dir') or ''))
+        promotion_dir = package_dir / 'promotion'
+        verification_path = promotion_dir / 'opencrab_live_runner_success_verification.json'
+        if not verification_path.exists():
+            return j(handler, {
+                'ok': False,
+                'status': 'neo4j_write_approval_gate_blocked',
+                'error': 'opencrab_live_runner_success_verification.json is required before Neo4j write approval gate',
+                'external_mutations': no_mutations,
+            }, status=409)
+        verification = json.loads(verification_path.read_text(encoding='utf-8'))
+        if verification.get('status') != 'opencrab_live_runner_success_verified':
+            return j(handler, {
+                'ok': False,
+                'status': 'neo4j_write_approval_gate_blocked',
+                'error': 'OpenCrab live runner success verification must be verified before Neo4j write approval gate',
+                'verification_status': verification.get('status'),
+                'external_mutations': post_opencrab_mutations,
+            }, status=409)
+        checks = verification.get('checks') or {}
+        required_checks = ['status_completed', 'payload_sha256_match', 'synced_counts_match_request', 'opencrab_result_id_present']
+        failed_checks = [name for name in required_checks if checks.get(name) is not True]
+        if failed_checks:
+            return j(handler, {
+                'ok': False,
+                'status': 'neo4j_write_approval_gate_blocked',
+                'error': 'OpenCrab live runner verification checks are incomplete',
+                'failed_checks': failed_checks,
+                'external_mutations': post_opencrab_mutations,
+            }, status=409)
+        expected_sha = str(body.get('expected_payload_sha256') or '').strip()
+        payload_sha = str(verification.get('payload_sha256') or '').strip()
+        if expected_sha and expected_sha != payload_sha:
+            return j(handler, {
+                'error': 'payload checksum mismatch',
+                'status': 'neo4j_write_approval_gate_blocked',
+                'expected_payload_sha256': expected_sha,
+                'payload_sha256': payload_sha,
+                'external_mutations': post_opencrab_mutations,
+            }, status=409)
+        approval_phrase = str(body.get('approval_phrase') or '').strip()
+        required_phrase = 'APPROVE_NEO4J_WRITE_AFTER_OPENCRAB_SYNC'
+        if approval_phrase != required_phrase:
+            return j(handler, {
+                'error': f'approval phrase must be {required_phrase}',
+                'status': 'neo4j_write_approval_gate_blocked',
+                'external_mutations': post_opencrab_mutations,
+            }, status=403)
+        gate = {
+            'package_id': verification.get('package_id') or package_dir.name,
+            'status': 'neo4j_write_approval_gate_ready',
+            'created_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+            'operator': str(body.get('operator') or 'webui-user'),
+            'approval_phrase': required_phrase,
+            'approval_phrase_verified': True,
+            'payload_sha256': payload_sha,
+            'opencrab_result_id': verification.get('opencrab_result_id'),
+            'neo4j_result_id': None,
+            'request_counts': verification.get('request_counts') or {},
+            'synced_counts': verification.get('synced_counts') or {},
+            'source_verification_path': str(verification_path),
+            'requires_separate_runner': True,
+            'next_approval_required': 'EXECUTE_NEO4J_WRITE_AFTER_OPENCRAB_SYNC',
+            'external_mutations': post_opencrab_mutations,
+            'external_mutations_performed': ['opencrab_sync'],
+            'guards': {
+                'neo4j_write_executed': False,
+                'paperclip_reflection_executed': False,
+                'paperclip_reflection_requires_separate_approval': True,
+            },
+        }
+        gate_path = promotion_dir / 'neo4j_write_approval_gate.json'
+        report_path = promotion_dir / 'neo4j_write_approval_gate.md'
+        gate_path.write_text(json.dumps(gate, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+        report_path.write_text('\n'.join([
+            '# Neo4j Write Approval Gate',
+            '',
+            f"Package: {gate['package_id']}",
+            f"Status: {gate['status']}",
+            f"Payload SHA-256: {gate['payload_sha256']}",
+            f"OpenCrab result id: {gate.get('opencrab_result_id') or ''}",
+            '',
+            '## Guard',
+            '- Neo4j write: not executed',
+            '- Paperclip reflection: not executed',
+            f"- Next approval phrase: {gate['next_approval_required']}",
+        ]) + '\n', encoding='utf-8')
+        return j(handler, {
+            'ok': True,
+            'package_id': gate['package_id'],
+            'package_dir': str(package_dir),
+            'status': gate['status'],
+            'approval_phrase_verified': True,
+            'payload_sha256': gate['payload_sha256'],
+            'opencrab_result_id': gate.get('opencrab_result_id'),
+            'neo4j_result_id': None,
+            'gate_path': str(gate_path),
+            'report_path': str(report_path),
+            'requires_separate_runner': True,
+            'next_approval_required': gate['next_approval_required'],
+            'external_mutations': post_opencrab_mutations,
+        })
+    except FileNotFoundError as e:
+        return bad(handler, str(e), 404)
+    except (ValueError, PermissionError, OSError, json.JSONDecodeError) as e:
+        return bad(handler, str(e), 400)
+    except Exception as e:
+        return bad(handler, str(e), 500)
 
 
 def _handle_research_intake_opencrab_live_runner_health(handler, body):

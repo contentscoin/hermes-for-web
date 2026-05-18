@@ -1670,3 +1670,8 @@ The live runner invocation now writes `promotion/opencrab_live_runner_failure.js
 ### Research Intake OpenCrab live runner success verification
 
 After a connector reports `opencrab_sync_completed`, the live runner writes `promotion/opencrab_live_runner_success_verification.json/md`. The verification checks response status, payload SHA-256, synced counts against the request counts, and `opencrab_result_id` presence. Verification failure returns HTTP 502 and does not approve Neo4j write or Paperclip reflection.
+
+
+### Research Intake Neo4j write approval gate
+
+`POST /api/research-intake/neo4j-write-approval-gate` requires `promotion/opencrab_live_runner_success_verification.json` with `opencrab_live_runner_success_verified`, all verification checks true, exact `approval_phrase=APPROVE_NEO4J_WRITE_AFTER_OPENCRAB_SYNC`, and optional matching `expected_payload_sha256`. It writes `promotion/neo4j_write_approval_gate.json/md` and still performs no Neo4j write or Paperclip reflection. The next mutation remains a separate runner gated by `EXECUTE_NEO4J_WRITE_AFTER_OPENCRAB_SYNC`.

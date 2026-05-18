@@ -1098,6 +1098,8 @@ function _researchIntakeSetApprovalEnabled(enabled){
   if(liveRunnerRetry) liveRunnerRetry.disabled=!enabled;
   const liveRunnerBtn=$('researchIntakeOpenCrabLiveRunner');
   if(liveRunnerBtn) liveRunnerBtn.disabled=!enabled;
+  const neo4jGateBtn=$('researchIntakeNeo4jWriteApprovalGate');
+  if(neo4jGateBtn) neo4jGateBtn.disabled=!enabled;
 }
 function _researchIntakeRenderReview(data){
   const panel=$('researchIntakeReviewPanel');
@@ -1441,6 +1443,31 @@ async function runResearchIntakeOpenCrabLiveRunner(){
     return null;
   }
 }
+async function createResearchIntakeNeo4jWriteApprovalGate(){
+  const packageId=_researchIntakeCurrentPackage;
+  if(!packageId){_researchIntakeSetResult('먼저 OpenCrab live runner success verification을 생성하세요.', true);return null;}
+  _researchIntakeSetResult('Neo4j write approval gate 생성 중... 실제 Neo4j write/Paperclip reflection은 하지 않습니다.', false);
+  try{
+    const res=await fetch(new URL('/api/research-intake/neo4j-write-approval-gate',location.origin).href,{
+      method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+        package_id:packageId,
+        approval_phrase:'APPROVE_NEO4J_WRITE_AFTER_OPENCRAB_SYNC',
+        operator:'webui-user'
+      })
+    });
+    const data=await res.json();
+    if(!res.ok&&res.status!==403&&res.status!==409) throw new Error(data.error||'neo4j_write_approval_gate failed');
+    const panel=$('researchIntakeReviewPanel');
+    if(panel){
+      panel.innerHTML=`<div class="research-intake-final-report"><strong>Neo4j write approval gate</strong><div>${esc(data.status||'neo4j_write_approval_gate_blocked')}</div><pre>${esc(`Approval phrase: APPROVE_NEO4J_WRITE_AFTER_OPENCRAB_SYNC\nNext approval required: ${data.next_approval_required||'EXECUTE_NEO4J_WRITE_AFTER_OPENCRAB_SYNC'}\nPayload SHA-256: ${data.payload_sha256||''}\nOpenCrab result id: ${data.opencrab_result_id||''}\nNeo4j result id: ${data.neo4j_result_id||''}\n\nMutations:\nOpenCrab sync: ${data.external_mutations&&data.external_mutations.opencrab_sync?'already executed':'not executed'}\nNeo4j write: not executed\nPaperclip reflection: not executed`)}</pre></div>`;
+    }
+    _researchIntakeSetResult(data.status==='neo4j_write_approval_gate_ready'?'Neo4j write approval gate 생성 완료 · 실제 Neo4j write 없음':'Neo4j write approval gate 차단 · success verification/승인 문구 확인', data.status!=='neo4j_write_approval_gate_ready');
+    return data;
+  }catch(e){
+    _researchIntakeSetResult('Neo4j write approval gate 실패: '+(e.message||e), true);
+    return null;
+  }
+}
 async function createResearchIntakeFinalApprovalPrompt(){
   const packageId=_researchIntakeCurrentPackage;
   if(!packageId){_researchIntakeSetResult('먼저 최종 실행 decision report를 생성하세요.', true);return null;}
@@ -1501,5 +1528,6 @@ window.createResearchIntakeOpenCrabLiveFinalApprovalPrompt=createResearchIntakeO
 window.createResearchIntakeOpenCrabLiveExecutionGate=createResearchIntakeOpenCrabLiveExecutionGate;
 window.checkResearchIntakeOpenCrabLiveRunnerHealth=checkResearchIntakeOpenCrabLiveRunnerHealth;
 window.runResearchIntakeOpenCrabLiveRunner=runResearchIntakeOpenCrabLiveRunner;
+window.createResearchIntakeNeo4jWriteApprovalGate=createResearchIntakeNeo4jWriteApprovalGate;
 window.createResearchIntakeFinalApprovalPrompt=createResearchIntakeFinalApprovalPrompt;
 window.createResearchIntakeExecutionPlan=createResearchIntakeExecutionPlan;
