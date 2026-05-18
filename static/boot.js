@@ -1094,6 +1094,8 @@ function _researchIntakeSetApprovalEnabled(enabled){
   if(executionGateBtn) executionGateBtn.disabled=!enabled;
   const liveRunnerHealthBtn=$('researchIntakeOpenCrabLiveRunnerHealth');
   if(liveRunnerHealthBtn) liveRunnerHealthBtn.disabled=!enabled;
+  const liveRunnerRetry=$('researchIntakeOpenCrabLiveRunnerRetry');
+  if(liveRunnerRetry) liveRunnerRetry.disabled=!enabled;
   const liveRunnerBtn=$('researchIntakeOpenCrabLiveRunner');
   if(liveRunnerBtn) liveRunnerBtn.disabled=!enabled;
 }
@@ -1418,17 +1420,19 @@ async function runResearchIntakeOpenCrabLiveRunner(){
         package_id:packageId,
         connector:'paperclip_opencrab_plugin',
         approval_phrase:'EXECUTE_PAPERCLIP_OPENCRAB_LIVE_SYNC',
-        operator:'webui-user'
+        operator:'webui-user',
+        retry:!!($('researchIntakeOpenCrabLiveRunnerRetry')&&$('researchIntakeOpenCrabLiveRunnerRetry').checked)
       })
     });
     const data=await res.json();
-    if(!res.ok&&res.status!==423) throw new Error(data.error||'opencrab_live_runner failed');
+    if(!res.ok&&res.status!==423&&res.status!==409&&res.status!==502) throw new Error(data.error||'opencrab_live_runner failed');
     const panel=$('researchIntakeReviewPanel');
     if(panel){
       const result=data.connector_result||{};
-      panel.innerHTML=`<div class="research-intake-final-report"><strong>OpenCrab live runner result</strong><div>${esc(data.status||'opencrab_live_runner_locked')} · connector: ${esc(data.connector||'paperclip_opencrab_plugin')}</div><pre>${esc(`Payload SHA-256: ${data.payload_sha256||''}\nResult artifact: opencrab_live_runner_result\nOpenCrab result id: ${result.opencrab_result_id||''}\n\nMutations:\nOpenCrab sync: ${data.external_mutations&&data.external_mutations.opencrab_sync?'executed':'not executed'}\nNeo4j write: not executed\nPaperclip reflection: not executed`)}</pre></div>`;
+      const retry=data.retry_guard||{};
+      panel.innerHTML=`<div class="research-intake-final-report"><strong>OpenCrab live runner result</strong><div>${esc(data.status||'opencrab_live_runner_locked')} · connector: ${esc(data.connector||'paperclip_opencrab_plugin')}</div><pre>${esc(`Payload SHA-256: ${data.payload_sha256||''}\nResult artifact: ${data.status==='opencrab_live_runner_failed'?'opencrab_live_runner_failure':'opencrab_live_runner_result'}\nFailure artifact: opencrab_live_runner_failure\nFailure type: ${data.failure_type||''}\nRetry guard: ${retry.retry_required?'retry_required=true':'none'}\nOpenCrab result id: ${result.opencrab_result_id||''}\n\nMutations:\nOpenCrab sync: ${data.external_mutations&&data.external_mutations.opencrab_sync?'executed':'not executed'}\nNeo4j write: not executed\nPaperclip reflection: not executed`)}</pre></div>`;
     }
-    _researchIntakeSetResult(data.status==='opencrab_live_runner_completed'?'OpenCrab live runner 완료 · Paperclip reflection/Neo4j write 없음':'OpenCrab live runner locked · 실제 sync 없음', data.status!=='opencrab_live_runner_completed');
+    _researchIntakeSetResult(data.status==='opencrab_live_runner_completed'?'OpenCrab live runner 완료 · Paperclip reflection/Neo4j write 없음':(data.status==='opencrab_live_runner_retry_blocked'?'OpenCrab live runner retry blocked · retry=true 필요':'OpenCrab live runner 완료 아님 · failure/retry guard 확인'), data.status!=='opencrab_live_runner_completed');
     return data;
   }catch(e){
     _researchIntakeSetResult('OpenCrab live runner 실패: '+(e.message||e), true);

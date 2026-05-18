@@ -1102,6 +1102,82 @@ def test_research_intake_paperclip_opencrab_live_runner_rejects_when_feature_fla
     assert payload["external_mutations"] == {"opencrab_sync": False, "neo4j_write": False, "paperclip_reflection": False}
 
 
+def test_research_intake_paperclip_opencrab_live_runner_writes_failure_artifact_without_mutation(tmp_path, monkeypatch):
+    import api.routes as routes
+
+    package_dir = _prepare_opencrab_execution_package(tmp_path)
+    _write_live_contract_for_runner_gate(package_dir)
+    monkeypatch.setattr(routes, "STATE_DIR", tmp_path)
+    gate = _prepare_execution_gate_for_live_runner(routes, package_dir, monkeypatch)
+
+    def fake_invoke(request):
+        raise TimeoutError("bridge timeout https://runner.invalid/sse?key=secret-token")
+
+    monkeypatch.setattr(routes, "_invoke_paperclip_opencrab_live_runner", fake_invoke)
+    handler = DummyHandler()
+    routes._handle_research_intake_opencrab_live_runner(handler, {
+        "package_id": "research-intake-test-package",
+        "connector": "paperclip_opencrab_plugin",
+        "approval_phrase": "EXECUTE_PAPERCLIP_OPENCRAB_LIVE_SYNC",
+        "expected_payload_sha256": gate["payload_sha256"],
+        "operator": "test-user",
+    })
+
+    payload = handler.json_payload()
+    assert handler.status == 502
+    assert payload["status"] == "opencrab_live_runner_failed"
+    assert payload["failure_type"] == "timeout"
+    assert payload["external_mutations"] == {"opencrab_sync": False, "neo4j_write": False, "paperclip_reflection": False}
+    failure = json.loads((package_dir / "promotion" / "opencrab_live_runner_failure.json").read_text(encoding="utf-8"))
+    assert failure["retry_guard"]["retry_required"] is True
+    assert failure["external_mutations"]["opencrab_sync"] is False
+    assert "secret-token" not in json.dumps(failure)
+
+
+def test_research_intake_paperclip_opencrab_live_runner_retry_guard_requires_explicit_retry(tmp_path, monkeypatch):
+    import api.routes as routes
+
+    package_dir = _prepare_opencrab_execution_package(tmp_path)
+    _write_live_contract_for_runner_gate(package_dir)
+    monkeypatch.setattr(routes, "STATE_DIR", tmp_path)
+    gate = _prepare_execution_gate_for_live_runner(routes, package_dir, monkeypatch)
+    failure_path = package_dir / "promotion" / "opencrab_live_runner_failure.json"
+    failure_path.write_text(json.dumps({
+        "status": "opencrab_live_runner_failed",
+        "payload_sha256": gate["payload_sha256"],
+        "retry_guard": {"retry_required": True},
+    }), encoding="utf-8")
+
+    calls = []
+
+    def fake_invoke(request):
+        calls.append(request)
+        return {"status": "opencrab_sync_completed", "payload_sha256": request["payload_sha256"], "synced_counts": request["counts"]}
+
+    monkeypatch.setattr(routes, "_invoke_paperclip_opencrab_live_runner", fake_invoke)
+    handler = DummyHandler()
+    routes._handle_research_intake_opencrab_live_runner(handler, {
+        "package_id": "research-intake-test-package",
+        "connector": "paperclip_opencrab_plugin",
+        "approval_phrase": "EXECUTE_PAPERCLIP_OPENCRAB_LIVE_SYNC",
+        "expected_payload_sha256": gate["payload_sha256"],
+    })
+    assert handler.status == 409
+    assert calls == []
+    assert handler.json_payload()["status"] == "opencrab_live_runner_retry_blocked"
+
+    retry_handler = DummyHandler()
+    routes._handle_research_intake_opencrab_live_runner(retry_handler, {
+        "package_id": "research-intake-test-package",
+        "connector": "paperclip_opencrab_plugin",
+        "approval_phrase": "EXECUTE_PAPERCLIP_OPENCRAB_LIVE_SYNC",
+        "expected_payload_sha256": gate["payload_sha256"],
+        "retry": True,
+    })
+    assert retry_handler.status == 200
+    assert calls and calls[0]["payload_sha256"] == gate["payload_sha256"]
+
+
 def test_research_intake_paperclip_opencrab_live_runner_ui_controls_exist():
     html = read("static/index.html")
     boot = read("static/boot.js")
@@ -1109,6 +1185,9 @@ def test_research_intake_paperclip_opencrab_live_runner_ui_controls_exist():
     assert "function runResearchIntakeOpenCrabLiveRunner" in boot
     assert "/api/research-intake/opencrab-live-runner" in boot
     assert "opencrab_live_runner_result" in boot
+    assert "researchIntakeOpenCrabLiveRunnerRetry" in html
+    assert "opencrab_live_runner_failure" in boot
+    assert "retry_required=true" in boot
 
 
 def test_research_intake_paperclip_opencrab_live_runner_health_reports_missing_url_without_mutation(monkeypatch):

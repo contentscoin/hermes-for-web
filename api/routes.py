@@ -1424,6 +1424,63 @@ def _invoke_paperclip_opencrab_live_runner(request_payload):
         return json.loads(resp.read().decode('utf-8') or '{}')
 
 
+def _classify_opencrab_live_runner_failure(exc_or_message):
+    text = str(exc_or_message or '').lower()
+    if isinstance(exc_or_message, TimeoutError) or 'timeout' in text or 'timed out' in text:
+        return 'timeout'
+    if 'checksum' in text:
+        return 'checksum_mismatch'
+    if 'schema' in text:
+        return 'schema_mismatch'
+    if 'urlopen' in text or 'unreachable' in text or 'connection' in text:
+        return 'unreachable'
+    return 'connector_error'
+
+
+def _write_opencrab_live_runner_failure_artifact(promotion_dir, *, package_id, connector, payload_sha256, request_payload, failure_type, error, no_mutations):
+    from api.opencrab_connector import redact_opencrab_endpoint
+    failure = {
+        'package_id': package_id,
+        'status': 'opencrab_live_runner_failed',
+        'created_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+        'connector': connector,
+        'payload_sha256': payload_sha256,
+        'request': request_payload,
+        'failure_type': failure_type,
+        'error': str(error),
+        'external_mutations': no_mutations,
+        'external_mutations_performed': [],
+        'retry_guard': {
+            'retry_required': True,
+            'retry_requires_same_payload_sha256': payload_sha256,
+            'retry_requires_approval_phrase': 'EXECUTE_PAPERCLIP_OPENCRAB_LIVE_SYNC',
+            'retry_default': 'blocked',
+        },
+    }
+    safe_failure = _redact_live_runner_payload(redact_opencrab_endpoint(failure))
+    failure_path = promotion_dir / 'opencrab_live_runner_failure.json'
+    report_path = promotion_dir / 'opencrab_live_runner_failure.md'
+    failure_path.write_text(json.dumps(safe_failure, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+    report_path.write_text('\n'.join([
+        '# Paperclip OpenCrab Live Runner Failure',
+        '',
+        f"Package: {safe_failure['package_id']}",
+        f"Status: {safe_failure['status']}",
+        f"Failure type: {safe_failure['failure_type']}",
+        f"Payload SHA-256: {safe_failure['payload_sha256']}",
+        '',
+        '## Mutations performed',
+        '- OpenCrab sync: not executed',
+        '- Neo4j write: not executed',
+        '- Paperclip reflection: not executed',
+        '',
+        '## Retry guard',
+        '- retry_required: true',
+        '- retry_default: blocked',
+    ]) + '\n', encoding='utf-8')
+    return safe_failure, failure_path, report_path
+
+
 def _handle_research_intake_opencrab_live_runner(handler, body):
     no_mutations = {
         'opencrab_sync': False,
@@ -1469,7 +1526,47 @@ def _handle_research_intake_opencrab_live_runner(handler, body):
             return j(handler, {'error': 'payload checksum mismatch before live runner invocation', 'external_mutations': no_mutations}, status=409)
         request_payload = dict(request_payload)
         request_payload['operator'] = str(body.get('operator') or request_payload.get('operator') or 'webui-user')
-        connector_result = _invoke_paperclip_opencrab_live_runner(request_payload)
+        failure_path = promotion_dir / 'opencrab_live_runner_failure.json'
+        if failure_path.exists() and not bool(body.get('retry')):
+            try:
+                previous_failure = json.loads(failure_path.read_text(encoding='utf-8'))
+            except Exception:
+                previous_failure = {}
+            if previous_failure.get('payload_sha256') == gate.get('payload_sha256'):
+                return j(handler, {
+                    'ok': False,
+                    'status': 'opencrab_live_runner_retry_blocked',
+                    'error': 'previous live runner failure requires explicit retry=true with the same approval phrase and payload checksum',
+                    'payload_sha256': gate.get('payload_sha256'),
+                    'retry_guard': previous_failure.get('retry_guard') or {'retry_required': True},
+                    'external_mutations': no_mutations,
+                }, status=409)
+        try:
+            connector_result = _invoke_paperclip_opencrab_live_runner(request_payload)
+        except Exception as e:
+            failure_type = _classify_opencrab_live_runner_failure(e)
+            safe_failure, failure_artifact_path, failure_report_path = _write_opencrab_live_runner_failure_artifact(
+                promotion_dir,
+                package_id=gate.get('package_id') or package_dir.name,
+                connector=connector,
+                payload_sha256=gate.get('payload_sha256'),
+                request_payload=request_payload,
+                failure_type=failure_type,
+                error=e,
+                no_mutations=no_mutations,
+            )
+            return j(handler, {
+                'ok': False,
+                'package_id': safe_failure['package_id'],
+                'package_dir': str(package_dir),
+                'status': safe_failure['status'],
+                'failure_type': safe_failure['failure_type'],
+                'error': safe_failure['error'],
+                'failure_path': str(failure_artifact_path),
+                'report_path': str(failure_report_path),
+                'retry_guard': safe_failure['retry_guard'],
+                'external_mutations': no_mutations,
+            }, status=502)
         connector_result = connector_result if isinstance(connector_result, dict) else {'raw_result': connector_result}
         if connector_result.get('payload_sha256') != gate.get('payload_sha256'):
             return j(handler, {'error': 'connector result payload checksum mismatch', 'connector_result': connector_result, 'external_mutations': success_mutations}, status=502)

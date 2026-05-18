@@ -1805,3 +1805,8 @@ The live runner tests prepare the full gate chain, set `HERMES_OPENCRAB_ENABLE_L
 ### Research Intake live runner bridge health tests
 
 Bridge health tests cover the unconfigured URL path, schema-valid probe path with URL redaction, and WebUI control wiring. The probe is monkeypatched in tests; no live network mutation occurs, and all mutation flags remain false.
+
+
+### Research Intake live runner failure artifact tests
+
+Failure/retry tests monkeypatch `_invoke_paperclip_opencrab_live_runner` to raise before mutation. Verify HTTP 502, `opencrab_live_runner_failed`, `opencrab_live_runner_failure.json/md`, redacted errors, all mutation flags false, and retry blocked until explicit `retry=true` with the same payload SHA-256 and approval phrase.

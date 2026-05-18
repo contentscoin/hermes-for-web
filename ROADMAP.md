@@ -409,3 +409,8 @@ The OpenCrab path now includes a live runner endpoint behind the execution gate 
 ### Completed: OpenCrab live runner bridge health check
 
 The live runner now has a pre-execution bridge health endpoint and WebUI button. Operators can verify feature flag, runner URL presence, bridge reachability, and request schema compatibility before attempting a live OpenCrab sync.
+
+
+### Completed: OpenCrab live runner failure artifact and retry guard
+
+The live runner now records failed pre-confirmation bridge attempts and blocks accidental repeated attempts. Operators must explicitly opt into retry while reusing the same payload checksum and final approval phrase.
