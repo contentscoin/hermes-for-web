@@ -1615,3 +1615,8 @@ The Research Intake WebUI now separates human review approval from execution. `P
 ### Research Intake guarded OpenCrab execution request
 
 `POST /api/research-intake/execute-opencrab` is the first action-specific final gate. It requires an existing `promotion/final_execution_approval_prompt.json`, requires the exact final phrase `FINAL_EXECUTE_RESEARCH_INTAKE`, and requires that `opencrab_sync` was included in the prompt's requested actions. The endpoint writes `promotion/opencrab_execution_request.json` and `.md` as an operator handoff. In WebUI mode it does not perform live OpenCrab sync; all external mutation flags remain false and live execution remains a separate operator-approved tool path.
+
+
+### Research Intake OpenCrab live sync bridge contract
+
+`POST /api/research-intake/execute-opencrab` now has a contract-only `execute_live=true` branch. It still requires `FINAL_EXECUTE_RESEARCH_INTAKE` and the final approval prompt. If `HERMES_OPENCRAB_LIVE_SYNC_CONNECTOR` is unset, the endpoint returns `live_connector_not_configured` with all mutation flags false. When the connector name is configured, WebUI writes `promotion/opencrab_live_sync_contract.json` with contract version `research-intake-opencrab-live-sync/v1`, source paths/counts, and the connector name, then returns HTTP 202. WebUI still performs no direct OpenCrab network mutation; the artifact is an operator handoff for a separately approved live tool path.

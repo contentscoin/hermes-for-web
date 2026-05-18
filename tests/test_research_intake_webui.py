@@ -477,3 +477,84 @@ def test_research_intake_opencrab_execution_ui_controls_exist():
     assert "function createResearchIntakeOpenCrabExecutionRequest" in boot
     assert "/api/research-intake/execute-opencrab" in boot
     assert "OpenCrab 실행 준비" in html + boot
+
+
+def _prepare_opencrab_execution_package(tmp_path):
+    package_root = tmp_path / "research-intake-packages"
+    package_dir = package_root / "research-intake-test-package"
+    (package_dir / "promotion").mkdir(parents=True)
+    (package_dir / "ontology").mkdir(parents=True)
+    (package_dir / "ontology" / "claims.jsonl").write_text('{"id":"claim-1","text":"FMG claim"}\n', encoding="utf-8")
+    (package_dir / "ontology" / "nodes.jsonl").write_text('{"id":"node-1","label":"FMG"}\n', encoding="utf-8")
+    (package_dir / "ontology" / "evidence.jsonl").write_text('{"id":"evidence-1","claim_id":"claim-1"}\n', encoding="utf-8")
+    (package_dir / "manifest.json").write_text(json.dumps({
+        "package_id": "research-intake-test-package",
+        "status": "approved_for_promotion",
+        "counts": {"claims": 1, "nodes": 1, "evidence": 1},
+    }), encoding="utf-8")
+    (package_dir / "promotion" / "final_execution_approval_prompt.json").write_text(json.dumps({
+        "package_id": "research-intake-test-package",
+        "status": "approval_prompt_ready",
+        "requested_actions": ["opencrab_sync"],
+        "approval_phrase": "FINAL_EXECUTE_RESEARCH_INTAKE",
+        "external_mutations_performed": [],
+    }), encoding="utf-8")
+    return package_dir
+
+
+def test_research_intake_opencrab_live_contract_blocks_without_connector_config(tmp_path, monkeypatch):
+    import api.routes as routes
+
+    _prepare_opencrab_execution_package(tmp_path)
+    monkeypatch.setattr(routes, "STATE_DIR", tmp_path)
+    monkeypatch.delenv("HERMES_OPENCRAB_LIVE_SYNC_CONNECTOR", raising=False)
+    handler = DummyHandler()
+    routes._handle_research_intake_execute_opencrab(handler, {
+        "package_id": "research-intake-test-package",
+        "final_execution_approval": "FINAL_EXECUTE_RESEARCH_INTAKE",
+        "dry_run": False,
+        "execute_live": True,
+    })
+
+    payload = handler.json_payload()
+    assert handler.status == 501
+    assert payload["status"] == "live_connector_not_configured"
+    assert payload["required_connector_env"] == "HERMES_OPENCRAB_LIVE_SYNC_CONNECTOR"
+    assert payload["external_mutations"] == {"opencrab_sync": False, "neo4j_write": False, "paperclip_reflection": False}
+
+
+def test_research_intake_opencrab_live_contract_writes_audit_payload_without_secret(tmp_path, monkeypatch):
+    import api.routes as routes
+
+    package_dir = _prepare_opencrab_execution_package(tmp_path)
+    monkeypatch.setattr(routes, "STATE_DIR", tmp_path)
+    monkeypatch.setenv("HERMES_OPENCRAB_LIVE_SYNC_CONNECTOR", "paperclip_opencrab_plugin")
+    handler = DummyHandler()
+    routes._handle_research_intake_execute_opencrab(handler, {
+        "package_id": "research-intake-test-package",
+        "final_execution_approval": "FINAL_EXECUTE_RESEARCH_INTAKE",
+        "dry_run": False,
+        "execute_live": True,
+        "operator": "test-user",
+    })
+
+    payload = handler.json_payload()
+    assert handler.status == 202
+    assert payload["ok"] is True
+    assert payload["status"] == "opencrab_live_sync_contract_ready"
+    assert payload["connector"] == "paperclip_opencrab_plugin"
+    assert payload["external_mutations"] == {"opencrab_sync": False, "neo4j_write": False, "paperclip_reflection": False}
+    assert payload["requires_operator_tool_run"] is True
+    audit = json.loads((package_dir / "promotion" / "opencrab_live_sync_contract.json").read_text(encoding="utf-8"))
+    assert audit["connector"] == "paperclip_opencrab_plugin"
+    assert audit["contract_version"] == "research-intake-opencrab-live-sync/v1"
+    assert audit["payload"]["package_id"] == "research-intake-test-package"
+    assert audit["payload"]["paths"]["claims"].endswith("claims.jsonl")
+    assert audit["external_mutations_performed"] == []
+    assert "mcp.opencrab.com" not in json.dumps(audit)
+
+
+def test_research_intake_opencrab_live_contract_ui_mentions_separate_operator_path():
+    boot = read("static/boot.js")
+    assert "execute_live" in boot
+    assert "separate operator-approved tool path" in boot

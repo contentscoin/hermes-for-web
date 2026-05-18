@@ -364,3 +364,8 @@ The OpenCrab panel can now generate a final execution approval prompt after the 
 ### Completed: Research Intake guarded OpenCrab execution request
 
 Research Intake now has an action-specific OpenCrab execution request gate. It records a final operator handoff for `opencrab_sync` after the final approval prompt, while intentionally leaving live sync unimplemented in WebUI. Next implementation should add a separately approved live tool bridge only after deciding the exact OpenCrab write API and audit log shape.
+
+
+### Completed: OpenCrab live sync bridge contract
+
+The live OpenCrab path now has contract tests and an audited handoff artifact. This stops short of direct WebUI mutation: a connector name can prepare `opencrab_live_sync_contract.json`, but actual OpenCrab sync remains outside WebUI behind a separate operator-approved tool path. Next step is selecting and implementing the concrete connector runner.

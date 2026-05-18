@@ -1702,7 +1702,67 @@ def _handle_research_intake_execute_opencrab(handler, body):
         if execute_live and dry_run:
             return bad(handler, 'execute_live requires dry_run=false and a separate operator-approved tool execution path', 400)
         if execute_live:
-            return bad(handler, 'live OpenCrab sync is not implemented in WebUI; use a separate approved tool execution after this request', 501)
+            connector = str(os.getenv('HERMES_OPENCRAB_LIVE_SYNC_CONNECTOR') or '').strip()
+            external_mutations = {
+                'opencrab_sync': False,
+                'neo4j_write': False,
+                'paperclip_reflection': False,
+            }
+            if not connector:
+                return j(handler, {
+                    'ok': False,
+                    'status': 'live_connector_not_configured',
+                    'error': 'HERMES_OPENCRAB_LIVE_SYNC_CONNECTOR is required before live OpenCrab sync contract handoff',
+                    'required_connector_env': 'HERMES_OPENCRAB_LIVE_SYNC_CONNECTOR',
+                    'external_mutations': external_mutations,
+                }, status=501)
+            payload = {
+                'package_id': manifest.get('package_id') or package_dir.name,
+                'action': 'opencrab_sync',
+                'paths': {
+                    'claims': str(package_dir / 'ontology' / 'claims.jsonl'),
+                    'nodes': str(package_dir / 'ontology' / 'nodes.jsonl'),
+                    'evidence': str(package_dir / 'ontology' / 'evidence.jsonl'),
+                },
+                'counts': counts,
+                'final_execution_approval': provided_phrase,
+            }
+            contract = {
+                'package_id': manifest.get('package_id') or package_dir.name,
+                'status': 'opencrab_live_sync_contract_ready',
+                'contract_version': 'research-intake-opencrab-live-sync/v1',
+                'connector': connector,
+                'operator': str(body.get('operator') or 'webui-user'),
+                'created_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+                'payload': payload,
+                'requires_operator_tool_run': True,
+                'external_mutations_performed': [],
+                'external_mutations': external_mutations,
+                'next': 'Operator must run the configured live connector outside WebUI with this audited contract payload.',
+            }
+            contract_path = package_dir / 'promotion' / 'opencrab_live_sync_contract.json'
+            contract_path.parent.mkdir(parents=True, exist_ok=True)
+            from api.opencrab_connector import redact_opencrab_endpoint
+            contract_path.write_text(json.dumps(redact_opencrab_endpoint(contract), ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+            manifest['opencrab_live_sync_contract'] = {
+                'status': contract['status'],
+                'contract_path': str(contract_path),
+                'connector': connector,
+                'requires_operator_tool_run': True,
+            }
+            manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+            return j(handler, redact_opencrab_endpoint({
+                'ok': True,
+                'package_id': contract['package_id'],
+                'package_dir': str(package_dir),
+                'status': contract['status'],
+                'connector': connector,
+                'contract_version': contract['contract_version'],
+                'contract_path': str(contract_path),
+                'requires_operator_tool_run': True,
+                'external_mutations': external_mutations,
+                'next': contract['next'],
+            }), status=202)
         record = {
             'package_id': manifest.get('package_id') or package_dir.name,
             'status': 'opencrab_execution_ready',

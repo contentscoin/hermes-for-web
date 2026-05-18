@@ -1760,3 +1760,8 @@ The Research Intake WebUI tests verify `GET /api/research-intake/execution-repor
 ### Research Intake guarded OpenCrab execution checks
 
 The OpenCrab execution request tests verify that `/api/research-intake/execute-opencrab` rejects packages without a final approval prompt, rejects an incorrect final phrase, and writes `opencrab_execution_request.json` with `external_mutations_performed: []`. Browser smoke should confirm the `OpenCrab 실행 준비` button exists and the console has no JS errors. API smoke should run the staged flow through approval prompt, then call execute-opencrab with `dry_run=true` and confirm no live mutation flags are enabled.
+
+
+### Research Intake OpenCrab live sync bridge contract tests
+
+Contract tests cover both branches of `execute_live=true`: no connector env returns `live_connector_not_configured`, while a configured `HERMES_OPENCRAB_LIVE_SYNC_CONNECTOR` writes `opencrab_live_sync_contract.json` and returns 202 without performing any mutation. Browser checks should verify the OpenCrab execution function includes `execute_live` and still communicates that live execution requires a separate operator-approved tool path.

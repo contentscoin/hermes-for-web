@@ -1183,16 +1183,17 @@ async function loadResearchIntakeExecutionReport(packageIdOrDir){
     return null;
   }
 }
-async function createResearchIntakeOpenCrabExecutionRequest(){
+async function createResearchIntakeOpenCrabExecutionRequest(executeLive=false){
   const packageId=_researchIntakeCurrentPackage;
   if(!packageId){_researchIntakeSetResult('먼저 최종 실행 승인 요청 문구를 생성하세요.', true);return null;}
-  _researchIntakeSetResult('OpenCrab 실행 준비 요청 기록 중... WebUI는 실제 sync를 하지 않습니다.', false);
+  _researchIntakeSetResult(executeLive?'OpenCrab live bridge contract 준비 중... separate operator-approved tool path 필요':'OpenCrab 실행 준비 요청 기록 중... WebUI는 실제 sync를 하지 않습니다.', false);
   try{
     const res=await fetch(new URL('/api/research-intake/execute-opencrab',location.origin).href,{
       method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({
         package_id:packageId,
         final_execution_approval:'FINAL_EXECUTE_RESEARCH_INTAKE',
-        dry_run:true,
+        dry_run:!executeLive,
+        execute_live:!!executeLive,
         operator:'webui-user'
       })
     });
@@ -1200,9 +1201,10 @@ async function createResearchIntakeOpenCrabExecutionRequest(){
     if(!res.ok||!data.ok) throw new Error(data.error||'opencrab execution request failed');
     const panel=$('researchIntakeReviewPanel');
     if(panel){
-      panel.innerHTML=`<div class="research-intake-final-report"><strong>OpenCrab 실행 준비</strong><div>${esc(data.status||'opencrab_execution_ready')} · dry run: ${esc(String(data.dry_run))} · external mutations disabled</div><pre>${esc('OpenCrab sync: not executed by WebUI\nNeo4j write: not executed\nPaperclip reflection: not executed\n\nLive execution still requires a separate operator-approved tool path.')}</pre></div>`;
+      const liveLine=executeLive?`Live bridge contract: ${esc(data.status||'opencrab_live_sync_contract_ready')} · connector: ${esc(data.connector||'configured')} · external mutations disabled until separate operator-approved tool path`:`${esc(data.status||'opencrab_execution_ready')} · dry run: ${esc(String(data.dry_run))} · external mutations disabled`;
+      panel.innerHTML=`<div class="research-intake-final-report"><strong>OpenCrab 실행 준비</strong><div>${liveLine}</div><pre>${esc('OpenCrab sync: not executed by WebUI\nNeo4j write: not executed\nPaperclip reflection: not executed\n\nLive execution still requires a separate operator-approved tool path.')}</pre></div>`;
     }
-    _researchIntakeSetResult('OpenCrab 실행 준비 요청 기록 완료 · 실제 sync 없음', false);
+    _researchIntakeSetResult(executeLive?'OpenCrab live bridge contract 준비 완료 · WebUI 직접 sync 없음':'OpenCrab 실행 준비 요청 기록 완료 · 실제 sync 없음', false);
     return data;
   }catch(e){
     _researchIntakeSetResult('OpenCrab 실행 준비 실패: '+(e.message||e), true);
