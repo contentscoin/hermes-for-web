@@ -1680,3 +1680,8 @@ After a connector reports `opencrab_sync_completed`, the live runner writes `pro
 ### Research Intake Neo4j write runner stub
 
 `POST /api/research-intake/neo4j-write-runner-stub` requires `promotion/neo4j_write_approval_gate.json`, exact `approval_phrase=EXECUTE_NEO4J_WRITE_AFTER_OPENCRAB_SYNC`, and optional matching `expected_payload_sha256`. It writes `promotion/neo4j_write_runner_stub_result.json/md` with fixed `neo4j.write_research_intake_from_opencrab` request schema and expected `research-intake-neo4j-write-runner/v1` response schema. This is still a stub: it performs no Neo4j write and no Paperclip reflection.
+
+
+### Research Intake Neo4j write live execution gate
+
+`POST /api/research-intake/neo4j-write-execution-gate` requires `promotion/neo4j_write_runner_stub_result.json`, exact `approval_phrase=FINAL_EXECUTE_NEO4J_WRITE_AFTER_OPENCRAB_SYNC`, and optional matching `expected_payload_sha256`. It writes `promotion/neo4j_write_execution_gate.json/md`, checks `HERMES_NEO4J_ENABLE_LIVE_WRITE`, returns HTTP 423 when locked, and still performs no Neo4j write or Paperclip reflection.

@@ -29,6 +29,7 @@ def test_research_intake_routes_are_registered():
     assert "/api/research-intake/opencrab-live-runner-health" in routes
     assert "/api/research-intake/neo4j-write-approval-gate" in routes
     assert "/api/research-intake/neo4j-write-runner-stub" in routes
+    assert "/api/research-intake/neo4j-write-execution-gate" in routes
     assert "_handle_research_intake_image_draft" in routes
     assert "_handle_research_intake_review" in routes
 
@@ -1430,6 +1431,132 @@ def test_research_intake_neo4j_write_runner_stub_ui_controls_exist():
     assert "/api/research-intake/neo4j-write-runner-stub" in boot
     assert "EXECUTE_NEO4J_WRITE_AFTER_OPENCRAB_SYNC" in boot
     assert "neo4j_write_runner_stub_result" in boot
+
+
+def _write_neo4j_write_runner_stub_for_execution_gate(package_dir, payload_sha256="sha-neo4j-gate"):
+    gate = _write_neo4j_write_approval_gate_for_stub(package_dir, payload_sha256=payload_sha256)
+    promotion_dir = package_dir / "promotion"
+    stub = {
+        "package_id": package_dir.name,
+        "status": "neo4j_write_runner_stub_ready",
+        "approval_phrase_verified": True,
+        "payload_sha256": payload_sha256,
+        "source_gate_path": str(promotion_dir / "neo4j_write_approval_gate.json"),
+        "would_request": {
+            "tool": "neo4j.write_research_intake_from_opencrab",
+            "version": "research-intake-neo4j-write-runner/v1",
+            "package_id": package_dir.name,
+            "payload_sha256": payload_sha256,
+            "opencrab_result_id": gate["opencrab_result_id"],
+            "counts": gate["synced_counts"],
+            "operator": "test-user",
+        },
+        "request_schema": {"tool": "neo4j.write_research_intake_from_opencrab", "version": "research-intake-neo4j-write-runner/v1"},
+        "expected_response_schema": {"version": "research-intake-neo4j-write-runner/v1", "required_fields": ["status", "payload_sha256", "neo4j_result_id", "written_counts"], "status": "neo4j_write_completed"},
+        "external_mutations": {"opencrab_sync": True, "neo4j_write": False, "paperclip_reflection": False},
+        "external_mutations_performed": ["opencrab_sync"],
+        "guards": {"neo4j_write_executed": False, "paperclip_reflection_executed": False},
+    }
+    (promotion_dir / "neo4j_write_runner_stub_result.json").write_text(json.dumps(stub, indent=2), encoding="utf-8")
+    return stub
+
+
+def test_research_intake_neo4j_write_execution_gate_requires_stub(tmp_path, monkeypatch):
+    import api.routes as routes
+
+    package_dir = _prepare_opencrab_execution_package(tmp_path)
+    monkeypatch.setattr(routes, "STATE_DIR", tmp_path)
+    monkeypatch.setenv("HERMES_NEO4J_ENABLE_LIVE_WRITE", "true")
+    handler = DummyHandler()
+    routes._handle_research_intake_neo4j_write_execution_gate(handler, {
+        "package_id": "research-intake-test-package",
+        "approval_phrase": "FINAL_EXECUTE_NEO4J_WRITE_AFTER_OPENCRAB_SYNC",
+        "expected_payload_sha256": "sha-neo4j-gate",
+    })
+
+    payload = handler.json_payload()
+    assert handler.status == 409
+    assert payload["status"] == "neo4j_write_execution_gate_blocked"
+    assert payload["external_mutations"] == {"opencrab_sync": True, "neo4j_write": False, "paperclip_reflection": False}
+
+
+def test_research_intake_neo4j_write_execution_gate_locks_when_feature_flag_off(tmp_path, monkeypatch):
+    import api.routes as routes
+
+    package_dir = _prepare_opencrab_execution_package(tmp_path)
+    monkeypatch.setattr(routes, "STATE_DIR", tmp_path)
+    monkeypatch.delenv("HERMES_NEO4J_ENABLE_LIVE_WRITE", raising=False)
+    stub = _write_neo4j_write_runner_stub_for_execution_gate(package_dir)
+    handler = DummyHandler()
+    routes._handle_research_intake_neo4j_write_execution_gate(handler, {
+        "package_id": "research-intake-test-package",
+        "approval_phrase": "FINAL_EXECUTE_NEO4J_WRITE_AFTER_OPENCRAB_SYNC",
+        "expected_payload_sha256": stub["payload_sha256"],
+    })
+
+    payload = handler.json_payload()
+    assert handler.status == 423
+    assert payload["status"] == "neo4j_write_execution_gate_locked"
+    assert payload["feature_flag"] == "HERMES_NEO4J_ENABLE_LIVE_WRITE"
+    assert payload["external_mutations"] == {"opencrab_sync": True, "neo4j_write": False, "paperclip_reflection": False}
+
+
+def test_research_intake_neo4j_write_execution_gate_writes_gate_without_mutation_when_flag_on(tmp_path, monkeypatch):
+    import api.routes as routes
+
+    package_dir = _prepare_opencrab_execution_package(tmp_path)
+    monkeypatch.setattr(routes, "STATE_DIR", tmp_path)
+    monkeypatch.setenv("HERMES_NEO4J_ENABLE_LIVE_WRITE", "true")
+    stub = _write_neo4j_write_runner_stub_for_execution_gate(package_dir)
+    handler = DummyHandler()
+    routes._handle_research_intake_neo4j_write_execution_gate(handler, {
+        "package_id": "research-intake-test-package",
+        "approval_phrase": "FINAL_EXECUTE_NEO4J_WRITE_AFTER_OPENCRAB_SYNC",
+        "expected_payload_sha256": stub["payload_sha256"],
+        "operator": "test-user",
+    })
+
+    payload = handler.json_payload()
+    assert handler.status == 200
+    assert payload["status"] == "neo4j_write_execution_gate_ready"
+    assert payload["feature_flag_enabled"] is True
+    assert payload["would_request"]["tool"] == "neo4j.write_research_intake_from_opencrab"
+    assert payload["external_mutations"] == {"opencrab_sync": True, "neo4j_write": False, "paperclip_reflection": False}
+    gate = json.loads((package_dir / "promotion" / "neo4j_write_execution_gate.json").read_text(encoding="utf-8"))
+    assert gate["status"] == "neo4j_write_execution_gate_ready"
+    assert gate["next_approval_required"] == "EXECUTE_NEO4J_WRITE_LIVE_RUNNER"
+    assert gate["external_mutations_performed"] == ["opencrab_sync"]
+    assert gate["guards"]["neo4j_write_executed"] is False
+
+
+def test_research_intake_neo4j_write_execution_gate_rejects_wrong_phrase(tmp_path, monkeypatch):
+    import api.routes as routes
+
+    package_dir = _prepare_opencrab_execution_package(tmp_path)
+    monkeypatch.setattr(routes, "STATE_DIR", tmp_path)
+    monkeypatch.setenv("HERMES_NEO4J_ENABLE_LIVE_WRITE", "true")
+    stub = _write_neo4j_write_runner_stub_for_execution_gate(package_dir)
+    handler = DummyHandler()
+    routes._handle_research_intake_neo4j_write_execution_gate(handler, {
+        "package_id": "research-intake-test-package",
+        "approval_phrase": "WRONG",
+        "expected_payload_sha256": stub["payload_sha256"],
+    })
+
+    payload = handler.json_payload()
+    assert handler.status == 403
+    assert "approval phrase" in payload["error"]
+    assert payload["external_mutations"] == {"opencrab_sync": True, "neo4j_write": False, "paperclip_reflection": False}
+
+
+def test_research_intake_neo4j_write_execution_gate_ui_controls_exist():
+    html = read("static/index.html")
+    boot = read("static/boot.js")
+    assert "researchIntakeNeo4jWriteExecutionGate" in html
+    assert "function createResearchIntakeNeo4jWriteExecutionGate" in boot
+    assert "/api/research-intake/neo4j-write-execution-gate" in boot
+    assert "FINAL_EXECUTE_NEO4J_WRITE_AFTER_OPENCRAB_SYNC" in boot
+    assert "neo4j_write_execution_gate" in boot
 
 
 def test_research_intake_paperclip_opencrab_live_runner_health_reports_missing_url_without_mutation(monkeypatch):

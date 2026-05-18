@@ -429,3 +429,8 @@ After OpenCrab live runner success verification, the WebUI can now create a Neo4
 ### Completed: Neo4j write runner stub
 
 After the Neo4j write approval gate, the WebUI can now create a Neo4j write runner stub artifact. It fixes the request/response schema and approval phrase for a future real Neo4j writer, but performs no graph mutation.
+
+
+### Completed: Neo4j write live execution gate
+
+After the Neo4j write runner stub, the WebUI can now create a locked live execution gate. The gate verifies the final approval phrase, checksum, and `HERMES_NEO4J_ENABLE_LIVE_WRITE`, but still does not execute a graph write.

@@ -506,6 +506,9 @@ def handle_post(handler, parsed) -> bool:
     if parsed.path == '/api/research-intake/neo4j-write-runner-stub':
         return _handle_research_intake_neo4j_write_runner_stub(handler, body)
 
+    if parsed.path == '/api/research-intake/neo4j-write-execution-gate':
+        return _handle_research_intake_neo4j_write_execution_gate(handler, body)
+
     # ── Workspace management (POST) ──
     if parsed.path == '/api/workspaces/add':
         return _handle_workspace_add(handler, body)
@@ -1600,6 +1603,124 @@ def _handle_research_intake_neo4j_write_runner_stub(handler, body):
             'report_path': str(report_path),
             'external_mutations': post_opencrab_mutations,
         })
+    except FileNotFoundError as e:
+        return bad(handler, str(e), 404)
+    except (ValueError, PermissionError, OSError, json.JSONDecodeError) as e:
+        return bad(handler, str(e), 400)
+    except Exception as e:
+        return bad(handler, str(e), 500)
+
+
+def _handle_research_intake_neo4j_write_execution_gate(handler, body):
+    post_opencrab_mutations = {
+        'opencrab_sync': True,
+        'neo4j_write': False,
+        'paperclip_reflection': False,
+    }
+    feature_flag = 'HERMES_NEO4J_ENABLE_LIVE_WRITE'
+    flag_enabled = str(os.environ.get(feature_flag) or '').lower() in ('1', 'true', 'yes', 'on')
+    try:
+        package_dir = _safe_research_intake_package_dir(str(body.get('package_id') or body.get('package_dir') or ''))
+        promotion_dir = package_dir / 'promotion'
+        stub_path = promotion_dir / 'neo4j_write_runner_stub_result.json'
+        if not stub_path.exists():
+            return j(handler, {
+                'ok': False,
+                'status': 'neo4j_write_execution_gate_blocked',
+                'error': 'neo4j_write_runner_stub_result.json is required before Neo4j write execution gate',
+                'feature_flag': feature_flag,
+                'feature_flag_enabled': flag_enabled,
+                'external_mutations': post_opencrab_mutations,
+            }, status=409)
+        stub = json.loads(stub_path.read_text(encoding='utf-8'))
+        if stub.get('status') != 'neo4j_write_runner_stub_ready':
+            return j(handler, {
+                'ok': False,
+                'status': 'neo4j_write_execution_gate_blocked',
+                'error': 'Neo4j write runner stub must be ready before execution gate',
+                'stub_status': stub.get('status'),
+                'feature_flag': feature_flag,
+                'feature_flag_enabled': flag_enabled,
+                'external_mutations': post_opencrab_mutations,
+            }, status=409)
+        expected_sha = str(body.get('expected_payload_sha256') or '').strip()
+        payload_sha = str(stub.get('payload_sha256') or '').strip()
+        if expected_sha and expected_sha != payload_sha:
+            return j(handler, {
+                'error': 'payload checksum mismatch',
+                'status': 'neo4j_write_execution_gate_blocked',
+                'expected_payload_sha256': expected_sha,
+                'payload_sha256': payload_sha,
+                'feature_flag': feature_flag,
+                'feature_flag_enabled': flag_enabled,
+                'external_mutations': post_opencrab_mutations,
+            }, status=409)
+        required_phrase = 'FINAL_EXECUTE_NEO4J_WRITE_AFTER_OPENCRAB_SYNC'
+        approval_phrase = str(body.get('approval_phrase') or '').strip()
+        if approval_phrase != required_phrase:
+            return j(handler, {
+                'error': f'approval phrase must be {required_phrase}',
+                'status': 'neo4j_write_execution_gate_blocked',
+                'feature_flag': feature_flag,
+                'feature_flag_enabled': flag_enabled,
+                'external_mutations': post_opencrab_mutations,
+            }, status=403)
+        would_request = dict(stub.get('would_request') or {})
+        would_request['operator'] = str(body.get('operator') or would_request.get('operator') or 'webui-user')
+        gate = {
+            'package_id': stub.get('package_id') or package_dir.name,
+            'status': 'neo4j_write_execution_gate_ready' if flag_enabled else 'neo4j_write_execution_gate_locked',
+            'created_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+            'feature_flag': feature_flag,
+            'feature_flag_enabled': flag_enabled,
+            'approval_phrase': required_phrase,
+            'approval_phrase_verified': True,
+            'payload_sha256': payload_sha,
+            'source_stub_path': str(stub_path),
+            'would_request': would_request,
+            'request_schema': stub.get('request_schema') or {},
+            'expected_response_schema': stub.get('expected_response_schema') or {},
+            'next_approval_required': 'EXECUTE_NEO4J_WRITE_LIVE_RUNNER',
+            'external_mutations': post_opencrab_mutations,
+            'external_mutations_performed': ['opencrab_sync'],
+            'guards': {
+                'neo4j_write_executed': False,
+                'paperclip_reflection_executed': False,
+                'requires_live_runner': True,
+                'paperclip_reflection_requires_separate_approval': True,
+            },
+        }
+        gate_path = promotion_dir / 'neo4j_write_execution_gate.json'
+        report_path = promotion_dir / 'neo4j_write_execution_gate.md'
+        gate_path.write_text(json.dumps(gate, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+        report_path.write_text('\n'.join([
+            '# Neo4j Write Execution Gate',
+            '',
+            f"Package: {gate['package_id']}",
+            f"Status: {gate['status']}",
+            f"Feature flag: {feature_flag}={'enabled' if flag_enabled else 'disabled / locked'}",
+            f"Payload SHA-256: {payload_sha}",
+            '',
+            '## Guard',
+            '- Neo4j write: not executed',
+            '- Paperclip reflection: not executed',
+        ]) + '\n', encoding='utf-8')
+        return j(handler, {
+            'ok': True,
+            'package_id': gate['package_id'],
+            'package_dir': str(package_dir),
+            'status': gate['status'],
+            'feature_flag': feature_flag,
+            'feature_flag_enabled': flag_enabled,
+            'payload_sha256': payload_sha,
+            'would_request': would_request,
+            'request_schema': gate['request_schema'],
+            'expected_response_schema': gate['expected_response_schema'],
+            'gate_path': str(gate_path),
+            'report_path': str(report_path),
+            'next_approval_required': gate['next_approval_required'],
+            'external_mutations': post_opencrab_mutations,
+        }, status=200 if flag_enabled else 423)
     except FileNotFoundError as e:
         return bad(handler, str(e), 404)
     except (ValueError, PermissionError, OSError, json.JSONDecodeError) as e:

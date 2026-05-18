@@ -1825,3 +1825,8 @@ Neo4j gate tests seed `opencrab_live_runner_success_verification.json`, then ver
 ### Research Intake Neo4j write runner stub tests
 
 Neo4j write runner stub tests seed `neo4j_write_approval_gate.json`, verify missing gate blocks with HTTP 409, wrong phrase returns HTTP 403, and a valid request writes `neo4j_write_runner_stub_result.json/md` with request/response schema while keeping `neo4j_write=false` and `paperclip_reflection=false`.
+
+
+### Research Intake Neo4j write live execution gate tests
+
+Neo4j write execution gate tests seed `neo4j_write_runner_stub_result.json`, verify missing stub blocks with HTTP 409, wrong phrase returns HTTP 403, feature flag off returns HTTP 423 Locked, and feature flag on writes `neo4j_write_execution_gate.json/md` while keeping `neo4j_write=false` and `paperclip_reflection=false`.
