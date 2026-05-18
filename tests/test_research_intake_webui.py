@@ -19,6 +19,7 @@ def test_research_intake_routes_are_registered():
     assert "/api/research-intake/execution-report" in routes
     assert "/api/research-intake/approval-prompt" in routes
     assert "/api/research-intake/execute-opencrab" in routes
+    assert "/api/research-intake/run-opencrab-connector" in routes
     assert "_handle_research_intake_image_draft" in routes
     assert "_handle_research_intake_review" in routes
 
@@ -554,7 +555,82 @@ def test_research_intake_opencrab_live_contract_writes_audit_payload_without_sec
     assert "mcp.opencrab.com" not in json.dumps(audit)
 
 
-def test_research_intake_opencrab_live_contract_ui_mentions_separate_operator_path():
+def test_research_intake_connector_runner_dry_run_adapter_validates_contract_without_mutation(tmp_path, monkeypatch):
+    import api.routes as routes
+
+    package_dir = _prepare_opencrab_execution_package(tmp_path)
+    contract = {
+        "package_id": "research-intake-test-package",
+        "status": "opencrab_live_sync_contract_ready",
+        "contract_version": "research-intake-opencrab-live-sync/v1",
+        "connector": "dry_run_adapter",
+        "payload": {
+            "package_id": "research-intake-test-package",
+            "action": "opencrab_sync",
+            "paths": {
+                "claims": str(package_dir / "ontology" / "claims.jsonl"),
+                "nodes": str(package_dir / "ontology" / "nodes.jsonl"),
+                "evidence": str(package_dir / "ontology" / "evidence.jsonl"),
+            },
+            "counts": {"claims": 1, "nodes": 1, "evidence": 1},
+            "final_execution_approval": "FINAL_EXECUTE_RESEARCH_INTAKE",
+        },
+        "external_mutations_performed": [],
+    }
+    (package_dir / "promotion" / "opencrab_live_sync_contract.json").write_text(json.dumps(contract), encoding="utf-8")
+    monkeypatch.setattr(routes, "STATE_DIR", tmp_path)
+    handler = DummyHandler()
+    routes._handle_research_intake_run_opencrab_connector(handler, {
+        "package_id": "research-intake-test-package",
+        "connector": "dry_run_adapter",
+        "runner_mode": "dry_run",
+        "operator": "test-user",
+    })
+
+    payload = handler.json_payload()
+    assert handler.status == 200
+    assert payload["ok"] is True
+    assert payload["status"] == "opencrab_connector_dry_run_validated"
+    assert payload["connector"] == "dry_run_adapter"
+    assert payload["runner_mode"] == "dry_run"
+    assert payload["external_mutations"] == {"opencrab_sync": False, "neo4j_write": False, "paperclip_reflection": False}
+    result = json.loads((package_dir / "promotion" / "opencrab_connector_run_result.json").read_text(encoding="utf-8"))
+    assert result["validated_contract"] is True
+    assert result["would_sync"]["claims"] == 1
+    assert result["external_mutations_performed"] == []
+    assert "mcp.opencrab.com" not in json.dumps(result)
+
+
+def test_research_intake_connector_runner_rejects_live_mode_for_dry_run_adapter(tmp_path, monkeypatch):
+    import api.routes as routes
+
+    package_dir = _prepare_opencrab_execution_package(tmp_path)
+    (package_dir / "promotion" / "opencrab_live_sync_contract.json").write_text(json.dumps({
+        "package_id": "research-intake-test-package",
+        "status": "opencrab_live_sync_contract_ready",
+        "contract_version": "research-intake-opencrab-live-sync/v1",
+        "connector": "dry_run_adapter",
+        "payload": {"package_id": "research-intake-test-package", "action": "opencrab_sync", "paths": {}, "counts": {}},
+        "external_mutations_performed": [],
+    }), encoding="utf-8")
+    monkeypatch.setattr(routes, "STATE_DIR", tmp_path)
+    handler = DummyHandler()
+    routes._handle_research_intake_run_opencrab_connector(handler, {
+        "package_id": "research-intake-test-package",
+        "connector": "dry_run_adapter",
+        "runner_mode": "live",
+    })
+
+    payload = handler.json_payload()
+    assert handler.status == 501
+    assert payload["status"] == "live_connector_runner_not_enabled"
+    assert payload["external_mutations"] == {"opencrab_sync": False, "neo4j_write": False, "paperclip_reflection": False}
+
+
+def test_research_intake_connector_runner_ui_controls_exist():
+    html = read("static/index.html")
     boot = read("static/boot.js")
-    assert "execute_live" in boot
-    assert "separate operator-approved tool path" in boot
+    assert "researchIntakeRunOpenCrabConnector" in html
+    assert "function runResearchIntakeOpenCrabConnector" in boot
+    assert "/api/research-intake/run-opencrab-connector" in boot
+    assert "dry_run_adapter" in boot

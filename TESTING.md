@@ -1765,3 +1765,8 @@ The OpenCrab execution request tests verify that `/api/research-intake/execute-o
 ### Research Intake OpenCrab live sync bridge contract tests
 
 Contract tests cover both branches of `execute_live=true`: no connector env returns `live_connector_not_configured`, while a configured `HERMES_OPENCRAB_LIVE_SYNC_CONNECTOR` writes `opencrab_live_sync_contract.json` and returns 202 without performing any mutation. Browser checks should verify the OpenCrab execution function includes `execute_live` and still communicates that live execution requires a separate operator-approved tool path.
+
+
+### Research Intake connector runner dry-run tests
+
+The connector runner tests create a package-local `opencrab_live_sync_contract.json`, call `/api/research-intake/run-opencrab-connector` with `connector=dry_run_adapter` and `runner_mode=dry_run`, and assert that `opencrab_connector_run_result.json` records validated counts while all mutation flags remain false. A live runner mode against the dry-run adapter must return `live_connector_runner_not_enabled`.

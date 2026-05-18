@@ -369,3 +369,8 @@ Research Intake now has an action-specific OpenCrab execution request gate. It r
 ### Completed: OpenCrab live sync bridge contract
 
 The live OpenCrab path now has contract tests and an audited handoff artifact. This stops short of direct WebUI mutation: a connector name can prepare `opencrab_live_sync_contract.json`, but actual OpenCrab sync remains outside WebUI behind a separate operator-approved tool path. Next step is selecting and implementing the concrete connector runner.
+
+
+### Completed: OpenCrab connector runner dry-run adapter
+
+A dry-run connector adapter now validates the live sync contract and writes an audited result artifact without mutation. The next step is a real connector runner behind an additional explicit live approval and concrete connector selection.

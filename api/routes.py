@@ -475,6 +475,9 @@ def handle_post(handler, parsed) -> bool:
     if parsed.path == '/api/research-intake/execute-opencrab':
         return _handle_research_intake_execute_opencrab(handler, body)
 
+    if parsed.path == '/api/research-intake/run-opencrab-connector':
+        return _handle_research_intake_run_opencrab_connector(handler, body)
+
     # ── Workspace management (POST) ──
     if parsed.path == '/api/workspaces/add':
         return _handle_workspace_add(handler, body)
@@ -1313,6 +1316,120 @@ def _research_intake_execution_report_payload(package_dir: Path) -> dict | None:
         'requires_final_tool_execution': bool(plan.get('requires_final_tool_execution', True)),
         'external_mutations': external_mutations,
     }
+
+
+def _handle_research_intake_run_opencrab_connector(handler, body):
+    try:
+        package_dir = _safe_research_intake_package_dir(str(body.get('package_id') or body.get('package_dir') or ''))
+        promotion_dir = package_dir / 'promotion'
+        contract_path = promotion_dir / 'opencrab_live_sync_contract.json'
+        if not contract_path.exists():
+            return bad(handler, 'opencrab_live_sync_contract.json is required before running connector adapter', 409)
+        contract = json.loads(contract_path.read_text(encoding='utf-8'))
+        if contract.get('status') != 'opencrab_live_sync_contract_ready':
+            return bad(handler, 'OpenCrab live sync contract is not ready', 409)
+        if contract.get('contract_version') != 'research-intake-opencrab-live-sync/v1':
+            return bad(handler, 'unsupported OpenCrab live sync contract version', 400)
+        connector = str(body.get('connector') or contract.get('connector') or '').strip()
+        runner_mode = str(body.get('runner_mode') or 'dry_run').strip()
+        external_mutations = {
+            'opencrab_sync': False,
+            'neo4j_write': False,
+            'paperclip_reflection': False,
+        }
+        if connector != 'dry_run_adapter':
+            return bad(handler, 'only dry_run_adapter connector runner is enabled in WebUI', 501)
+        if runner_mode != 'dry_run':
+            return j(handler, {
+                'ok': False,
+                'status': 'live_connector_runner_not_enabled',
+                'error': 'live connector runner is not enabled; use dry_run_adapter with runner_mode=dry_run',
+                'connector': connector,
+                'runner_mode': runner_mode,
+                'external_mutations': external_mutations,
+            }, status=501)
+        payload = contract.get('payload') or {}
+        if payload.get('action') != 'opencrab_sync':
+            return bad(handler, 'contract payload action must be opencrab_sync', 400)
+        paths = payload.get('paths') or {}
+        counts = payload.get('counts') or {}
+        validation = {
+            'claims_path_exists': Path(str(paths.get('claims') or '')).exists() if paths.get('claims') else False,
+            'nodes_path_exists': Path(str(paths.get('nodes') or '')).exists() if paths.get('nodes') else False,
+            'evidence_path_exists': Path(str(paths.get('evidence') or '')).exists() if paths.get('evidence') else False,
+        }
+        if not validation['claims_path_exists']:
+            return bad(handler, 'contract claims path is missing', 400)
+        result = {
+            'package_id': contract.get('package_id') or package_dir.name,
+            'status': 'opencrab_connector_dry_run_validated',
+            'connector': connector,
+            'runner_mode': runner_mode,
+            'operator': str(body.get('operator') or 'webui-user'),
+            'created_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+            'contract_path': str(contract_path),
+            'validated_contract': True,
+            'validation': validation,
+            'would_sync': {
+                'claims': int(counts.get('claims') or _jsonl_count(Path(str(paths.get('claims'))))),
+                'nodes': int(counts.get('nodes') or _jsonl_count(Path(str(paths.get('nodes'))))) if paths.get('nodes') else 0,
+                'evidence': int(counts.get('evidence') or _jsonl_count(Path(str(paths.get('evidence'))))) if paths.get('evidence') else 0,
+            },
+            'external_mutations_performed': [],
+            'external_mutations': external_mutations,
+            'next': 'Dry-run adapter validated the contract. A real connector runner still needs separate approval.',
+        }
+        result_path = promotion_dir / 'opencrab_connector_run_result.json'
+        report_path = promotion_dir / 'opencrab_connector_run_result.md'
+        from api.opencrab_connector import redact_opencrab_endpoint
+        safe_result = redact_opencrab_endpoint(result)
+        result_path.write_text(json.dumps(safe_result, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+        report_path.write_text('\n'.join([
+            '# Research Intake OpenCrab Connector Dry-run Result',
+            '',
+            f"Package: {safe_result['package_id']}",
+            f"Status: {safe_result['status']}",
+            f"Connector: {connector}",
+            '',
+            '## Would sync',
+            f"- claims: {safe_result['would_sync']['claims']}",
+            f"- nodes: {safe_result['would_sync']['nodes']}",
+            f"- evidence: {safe_result['would_sync']['evidence']}",
+            '',
+            '## Mutation status',
+            '- OpenCrab sync: not executed by dry-run adapter',
+            '- Neo4j write: not executed',
+            '- Paperclip reflection: not executed',
+        ]) + '\n', encoding='utf-8')
+        manifest_path = package_dir / 'manifest.json'
+        manifest = json.loads(manifest_path.read_text(encoding='utf-8')) if manifest_path.exists() else {}
+        manifest['opencrab_connector_runner'] = {
+            'status': safe_result['status'],
+            'result_path': str(result_path),
+            'report_path': str(report_path),
+            'runner_mode': runner_mode,
+            'connector': connector,
+        }
+        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+        return j(handler, {
+            'ok': True,
+            'package_id': safe_result['package_id'],
+            'package_dir': str(package_dir),
+            'status': safe_result['status'],
+            'connector': connector,
+            'runner_mode': runner_mode,
+            'result_path': str(result_path),
+            'report_path': str(report_path),
+            'would_sync': safe_result['would_sync'],
+            'external_mutations': external_mutations,
+            'next': safe_result['next'],
+        })
+    except FileNotFoundError as e:
+        return bad(handler, str(e), 404)
+    except (ValueError, PermissionError, OSError, json.JSONDecodeError) as e:
+        return bad(handler, str(e), 400)
+    except Exception as e:
+        return bad(handler, str(e), 500)
 
 
 def _handle_research_intake_review(handler, parsed):

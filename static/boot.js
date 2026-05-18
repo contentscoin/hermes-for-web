@@ -1080,6 +1080,8 @@ function _researchIntakeSetApprovalEnabled(enabled){
   if(promptBtn) promptBtn.disabled=!enabled;
   const opencrabBtn=$('researchIntakeExecuteOpenCrab');
   if(opencrabBtn) opencrabBtn.disabled=!enabled;
+  const runnerBtn=$('researchIntakeRunOpenCrabConnector');
+  if(runnerBtn) runnerBtn.disabled=!enabled;
 }
 function _researchIntakeRenderReview(data){
   const panel=$('researchIntakeReviewPanel');
@@ -1211,6 +1213,33 @@ async function createResearchIntakeOpenCrabExecutionRequest(executeLive=false){
     return null;
   }
 }
+async function runResearchIntakeOpenCrabConnector(){
+  const packageId=_researchIntakeCurrentPackage;
+  if(!packageId){_researchIntakeSetResult('먼저 OpenCrab live sync contract를 준비하세요.', true);return null;}
+  _researchIntakeSetResult('OpenCrab connector dry_run_adapter 검증 중... 실제 sync는 하지 않습니다.', false);
+  try{
+    const res=await fetch(new URL('/api/research-intake/run-opencrab-connector',location.origin).href,{
+      method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+        package_id:packageId,
+        connector:'dry_run_adapter',
+        runner_mode:'dry_run',
+        operator:'webui-user'
+      })
+    });
+    const data=await res.json();
+    if(!res.ok||!data.ok) throw new Error(data.error||'connector runner dry-run failed');
+    const panel=$('researchIntakeReviewPanel');
+    if(panel){
+      const would=data.would_sync||{};
+      panel.innerHTML=`<div class="research-intake-final-report"><strong>OpenCrab connector dry-run</strong><div>${esc(data.status||'opencrab_connector_dry_run_validated')} · connector: ${esc(data.connector||'dry_run_adapter')} · external mutations disabled</div><pre>${esc(`Would sync\n- claims: ${would.claims||0}\n- nodes: ${would.nodes||0}\n- evidence: ${would.evidence||0}\n\nOpenCrab sync: not executed\nNeo4j write: not executed\nPaperclip reflection: not executed`)}</pre></div>`;
+    }
+    _researchIntakeSetResult('OpenCrab connector dry-run 검증 완료 · 실제 sync 없음', false);
+    return data;
+  }catch(e){
+    _researchIntakeSetResult('OpenCrab connector dry-run 실패: '+(e.message||e), true);
+    return null;
+  }
+}
 async function createResearchIntakeFinalApprovalPrompt(){
   const packageId=_researchIntakeCurrentPackage;
   if(!packageId){_researchIntakeSetResult('먼저 최종 실행 decision report를 생성하세요.', true);return null;}
@@ -1263,5 +1292,6 @@ window.loadResearchIntakeReview=loadResearchIntakeReview;
 window.approveResearchIntakePromotion=approveResearchIntakePromotion;
 window.loadResearchIntakeExecutionReport=loadResearchIntakeExecutionReport;
 window.createResearchIntakeOpenCrabExecutionRequest=createResearchIntakeOpenCrabExecutionRequest;
+window.runResearchIntakeOpenCrabConnector=runResearchIntakeOpenCrabConnector;
 window.createResearchIntakeFinalApprovalPrompt=createResearchIntakeFinalApprovalPrompt;
 window.createResearchIntakeExecutionPlan=createResearchIntakeExecutionPlan;

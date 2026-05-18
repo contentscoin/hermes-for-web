@@ -1620,3 +1620,8 @@ The Research Intake WebUI now separates human review approval from execution. `P
 ### Research Intake OpenCrab live sync bridge contract
 
 `POST /api/research-intake/execute-opencrab` now has a contract-only `execute_live=true` branch. It still requires `FINAL_EXECUTE_RESEARCH_INTAKE` and the final approval prompt. If `HERMES_OPENCRAB_LIVE_SYNC_CONNECTOR` is unset, the endpoint returns `live_connector_not_configured` with all mutation flags false. When the connector name is configured, WebUI writes `promotion/opencrab_live_sync_contract.json` with contract version `research-intake-opencrab-live-sync/v1`, source paths/counts, and the connector name, then returns HTTP 202. WebUI still performs no direct OpenCrab network mutation; the artifact is an operator handoff for a separately approved live tool path.
+
+
+### Research Intake OpenCrab connector runner dry-run adapter
+
+`POST /api/research-intake/run-opencrab-connector` validates `promotion/opencrab_live_sync_contract.json` through a `dry_run_adapter`. The endpoint accepts `connector=dry_run_adapter` and `runner_mode=dry_run`, verifies the contract version/action/source paths, writes `promotion/opencrab_connector_run_result.json` plus `.md`, and returns the counts it would sync. It performs no OpenCrab network sync, Neo4j write, or Paperclip reflection. Any non-dry-run runner mode is blocked with `live_connector_runner_not_enabled`.
