@@ -1106,6 +1106,8 @@ function _researchIntakeSetApprovalEnabled(enabled){
   if(neo4jExecutionGateBtn) neo4jExecutionGateBtn.disabled=!enabled;
   const neo4jLiveRunnerBtn=$('researchIntakeNeo4jWriteLiveRunner');
   if(neo4jLiveRunnerBtn) neo4jLiveRunnerBtn.disabled=!enabled;
+  const paperclipReflectionGateBtn=$('researchIntakePaperclipReflectionApprovalGate');
+  if(paperclipReflectionGateBtn) paperclipReflectionGateBtn.disabled=!enabled;
 }
 function _researchIntakeRenderReview(data){
   const panel=$('researchIntakeReviewPanel');
@@ -1554,6 +1556,31 @@ async function runResearchIntakeNeo4jWriteLiveRunner(){
     return null;
   }
 }
+async function createResearchIntakePaperclipReflectionApprovalGate(){
+  const packageId=_researchIntakeCurrentPackage;
+  if(!packageId){_researchIntakeSetResult('먼저 Neo4j write success verification을 생성하세요.', true);return null;}
+  _researchIntakeSetResult('Paperclip reflection approval gate 생성 중... 실제 Paperclip reflection은 하지 않습니다.', false);
+  try{
+    const res=await fetch(new URL('/api/research-intake/paperclip-reflection-approval-gate',location.origin).href,{
+      method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+        package_id:packageId,
+        approval_phrase:'APPROVE_PAPERCLIP_REFLECTION_AFTER_NEO4J_WRITE',
+        operator:'webui-user'
+      })
+    });
+    const data=await res.json();
+    if(!res.ok&&res.status!==403&&res.status!==409) throw new Error(data.error||'paperclip_reflection_approval_gate failed');
+    const panel=$('researchIntakeReviewPanel');
+    if(panel){
+      panel.innerHTML=`<div class="research-intake-final-report"><strong>Paperclip reflection approval gate</strong><div>${esc(data.status||'paperclip_reflection_approval_gate_blocked')}</div><pre>${esc(`Approval phrase: APPROVE_PAPERCLIP_REFLECTION_AFTER_NEO4J_WRITE\nNext approval required: ${data.next_approval_required||'EXECUTE_PAPERCLIP_REFLECTION_AFTER_NEO4J_WRITE'}\nPayload SHA-256: ${data.payload_sha256||''}\nOpenCrab result id: ${data.opencrab_result_id||''}\nNeo4j result id: ${data.neo4j_result_id||''}\nGate artifact: paperclip_reflection_approval_gate\n\nMutations:\nOpenCrab sync: ${data.external_mutations&&data.external_mutations.opencrab_sync?'already executed':'not executed'}\nNeo4j write: ${data.external_mutations&&data.external_mutations.neo4j_write?'already executed/verified':'not executed'}\nPaperclip reflection: not executed\n\nThis only creates the approval boundary before Paperclip reflection.`)}</pre></div>`;
+    }
+    _researchIntakeSetResult(data.status==='paperclip_reflection_approval_gate_ready'?'Paperclip reflection approval gate 준비 완료 · 실제 reflection 없음':'Paperclip reflection approval gate 차단 · Neo4j success verification/승인 문구 확인', data.status!=='paperclip_reflection_approval_gate_ready');
+    return data;
+  }catch(e){
+    _researchIntakeSetResult('Paperclip reflection approval gate 실패: '+(e.message||e), true);
+    return null;
+  }
+}
 async function createResearchIntakeFinalApprovalPrompt(){
   const packageId=_researchIntakeCurrentPackage;
   if(!packageId){_researchIntakeSetResult('먼저 최종 실행 decision report를 생성하세요.', true);return null;}
@@ -1618,5 +1645,6 @@ window.createResearchIntakeNeo4jWriteApprovalGate=createResearchIntakeNeo4jWrite
 window.runResearchIntakeNeo4jWriteRunnerStub=runResearchIntakeNeo4jWriteRunnerStub;
 window.createResearchIntakeNeo4jWriteExecutionGate=createResearchIntakeNeo4jWriteExecutionGate;
 window.runResearchIntakeNeo4jWriteLiveRunner=runResearchIntakeNeo4jWriteLiveRunner;
+window.createResearchIntakePaperclipReflectionApprovalGate=createResearchIntakePaperclipReflectionApprovalGate;
 window.createResearchIntakeFinalApprovalPrompt=createResearchIntakeFinalApprovalPrompt;
 window.createResearchIntakeExecutionPlan=createResearchIntakeExecutionPlan;

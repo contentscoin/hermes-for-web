@@ -1835,3 +1835,8 @@ Neo4j write execution gate tests seed `neo4j_write_runner_stub_result.json`, ver
 ### Research Intake Neo4j write live runner tests
 
 Neo4j write live runner tests cover missing execution gate, default no-runner failure artifact creation, retry guard blocking, monkeypatched success result creation, and success verification checks for status, payload checksum, written counts, and `neo4j_result_id`. Browser smoke should verify the live runner button/function and no Paperclip reflection messaging.
+
+
+### Research Intake Paperclip reflection approval gate tests
+
+Paperclip reflection approval gate tests cover missing Neo4j success verification, failed verification checks, artifact creation without reflection, route registration, and WebUI control wiring. Browser smoke should verify the approval gate button/function, the exact approval phrase, the gate artifact label, and `Paperclip reflection: not executed`.

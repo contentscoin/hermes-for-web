@@ -512,6 +512,9 @@ def handle_post(handler, parsed) -> bool:
     if parsed.path == '/api/research-intake/neo4j-write-live-runner':
         return _handle_research_intake_neo4j_write_live_runner(handler, body)
 
+    if parsed.path == '/api/research-intake/paperclip-reflection-approval-gate':
+        return _handle_research_intake_paperclip_reflection_approval_gate(handler, body)
+
     # ── Workspace management (POST) ──
     if parsed.path == '/api/workspaces/add':
         return _handle_workspace_add(handler, body)
@@ -1835,6 +1838,117 @@ def _handle_research_intake_neo4j_write_live_runner(handler, body):
         if verification['status'] != 'neo4j_write_success_verified':
             return j(handler, {'ok': False, 'status': verification['status'], 'result_path': str(result_path), 'success_verification': verification, 'external_mutations': after_mutation}, status=502)
         return j(handler, {'ok': True, 'package_id': result['package_id'], 'status': result['status'], 'payload_sha256': payload_sha, 'neo4j_result_id': result.get('neo4j_result_id'), 'result_path': str(result_path), 'success_verification': verification, 'external_mutations': after_mutation})
+    except FileNotFoundError as e:
+        return bad(handler, str(e), 404)
+    except (ValueError, PermissionError, OSError, json.JSONDecodeError) as e:
+        return bad(handler, str(e), 400)
+    except Exception as e:
+        return bad(handler, str(e), 500)
+
+
+def _handle_research_intake_paperclip_reflection_approval_gate(handler, body):
+    mutations = {'opencrab_sync': True, 'neo4j_write': True, 'paperclip_reflection': False}
+    try:
+        package_dir = _safe_research_intake_package_dir(str(body.get('package_id') or body.get('package_dir') or ''))
+        promotion_dir = package_dir / 'promotion'
+        verification_path = promotion_dir / 'neo4j_write_success_verification.json'
+        if not verification_path.exists():
+            return j(handler, {
+                'ok': False,
+                'status': 'paperclip_reflection_approval_gate_blocked',
+                'error': 'neo4j_write_success_verification.json is required before Paperclip reflection approval gate',
+                'external_mutations': mutations,
+            }, status=409)
+        verification = json.loads(verification_path.read_text(encoding='utf-8'))
+        if verification.get('status') != 'neo4j_write_success_verified':
+            return j(handler, {
+                'ok': False,
+                'status': 'paperclip_reflection_approval_gate_blocked',
+                'error': 'Neo4j write success verification must be verified before Paperclip reflection approval gate',
+                'verification_status': verification.get('status'),
+                'external_mutations': mutations,
+            }, status=409)
+        checks = verification.get('checks') or {}
+        required_checks = ['status_completed', 'payload_sha256_match', 'written_counts_match_request', 'neo4j_result_id_present']
+        failed_checks = [name for name in required_checks if checks.get(name) is not True]
+        if failed_checks:
+            return j(handler, {
+                'ok': False,
+                'status': 'paperclip_reflection_approval_gate_blocked',
+                'error': 'Neo4j write verification checks are incomplete',
+                'failed_checks': failed_checks,
+                'external_mutations': mutations,
+            }, status=409)
+        payload_sha = str(verification.get('payload_sha256') or '').strip()
+        expected_sha = str(body.get('expected_payload_sha256') or '').strip()
+        if expected_sha and expected_sha != payload_sha:
+            return j(handler, {
+                'ok': False,
+                'status': 'paperclip_reflection_approval_gate_blocked',
+                'error': 'payload checksum mismatch',
+                'expected_payload_sha256': expected_sha,
+                'payload_sha256': payload_sha,
+                'external_mutations': mutations,
+            }, status=409)
+        required_phrase = 'APPROVE_PAPERCLIP_REFLECTION_AFTER_NEO4J_WRITE'
+        if str(body.get('approval_phrase') or '').strip() != required_phrase:
+            return j(handler, {
+                'ok': False,
+                'status': 'paperclip_reflection_approval_gate_blocked',
+                'error': f'approval phrase must be {required_phrase}',
+                'external_mutations': mutations,
+            }, status=403)
+        gate = {
+            'package_id': verification.get('package_id') or package_dir.name,
+            'status': 'paperclip_reflection_approval_gate_ready',
+            'created_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+            'operator': str(body.get('operator') or 'webui-user'),
+            'approval_phrase': required_phrase,
+            'approval_phrase_verified': True,
+            'payload_sha256': payload_sha,
+            'opencrab_result_id': verification.get('opencrab_result_id'),
+            'neo4j_result_id': verification.get('neo4j_result_id'),
+            'request_counts': verification.get('request_counts') or {},
+            'written_counts': verification.get('written_counts') or {},
+            'source_verification_path': str(verification_path),
+            'next_approval_required': 'EXECUTE_PAPERCLIP_REFLECTION_AFTER_NEO4J_WRITE',
+            'external_mutations': mutations,
+            'external_mutations_performed': ['opencrab_sync', 'neo4j_write'],
+            'guards': {
+                'paperclip_reflection_executed': False,
+                'requires_reflection_runner': True,
+                'reflection_requires_separate_approval': True,
+            },
+        }
+        gate_path = promotion_dir / 'paperclip_reflection_approval_gate.json'
+        report_path = promotion_dir / 'paperclip_reflection_approval_gate.md'
+        gate_path.write_text(json.dumps(gate, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+        report_path.write_text('\n'.join([
+            '# Paperclip Reflection Approval Gate',
+            '',
+            f"Package: {gate['package_id']}",
+            f"Status: {gate['status']}",
+            f"Payload SHA-256: {payload_sha}",
+            f"OpenCrab result id: {gate.get('opencrab_result_id') or ''}",
+            f"Neo4j result id: {gate.get('neo4j_result_id') or ''}",
+            '',
+            '## Guard',
+            '- Paperclip reflection: not executed',
+            f"- Next approval phrase: {gate['next_approval_required']}",
+        ]) + '\n', encoding='utf-8')
+        return j(handler, {
+            'ok': True,
+            'package_id': gate['package_id'],
+            'package_dir': str(package_dir),
+            'status': gate['status'],
+            'payload_sha256': payload_sha,
+            'opencrab_result_id': gate.get('opencrab_result_id'),
+            'neo4j_result_id': gate.get('neo4j_result_id'),
+            'gate_path': str(gate_path),
+            'report_path': str(report_path),
+            'next_approval_required': gate['next_approval_required'],
+            'external_mutations': mutations,
+        })
     except FileNotFoundError as e:
         return bad(handler, str(e), 404)
     except (ValueError, PermissionError, OSError, json.JSONDecodeError) as e:

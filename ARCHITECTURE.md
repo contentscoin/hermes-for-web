@@ -1690,3 +1690,8 @@ After a connector reports `opencrab_sync_completed`, the live runner writes `pro
 ### Research Intake Neo4j write live runner invocation
 
 `POST /api/research-intake/neo4j-write-live-runner` requires `promotion/neo4j_write_execution_gate.json`, `HERMES_NEO4J_ENABLE_LIVE_WRITE=true`, exact `approval_phrase=EXECUTE_NEO4J_WRITE_LIVE_RUNNER`, and optional matching `expected_payload_sha256`. The default helper requires `HERMES_NEO4J_LIVE_RUNNER_URL`; when absent or failing it writes `neo4j_write_live_runner_failure.json/md` and blocks repeat attempts unless `retry=true`. On confirmed success it writes `neo4j_write_live_runner_result.json/md` and `neo4j_write_success_verification.json/md`, while Paperclip reflection remains false and separately gated.
+
+
+### Research Intake Paperclip reflection approval gate
+
+`POST /api/research-intake/paperclip-reflection-approval-gate` requires `promotion/neo4j_write_success_verification.json` with status `neo4j_write_success_verified`, all verification checks true, exact `approval_phrase=APPROVE_PAPERCLIP_REFLECTION_AFTER_NEO4J_WRITE`, and optional matching `expected_payload_sha256`. It writes `paperclip_reflection_approval_gate.json/md`, records OpenCrab and Neo4j as already performed, keeps `paperclip_reflection=false`, and sets `next_approval_required=EXECUTE_PAPERCLIP_REFLECTION_AFTER_NEO4J_WRITE` for a later reflection runner.

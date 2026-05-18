@@ -31,6 +31,7 @@ def test_research_intake_routes_are_registered():
     assert "/api/research-intake/neo4j-write-runner-stub" in routes
     assert "/api/research-intake/neo4j-write-execution-gate" in routes
     assert "/api/research-intake/neo4j-write-live-runner" in routes
+    assert "/api/research-intake/paperclip-reflection-approval-gate" in routes
     assert "_handle_research_intake_image_draft" in routes
     assert "_handle_research_intake_review" in routes
 
@@ -1683,6 +1684,106 @@ def test_research_intake_neo4j_write_live_runner_ui_controls_exist():
     assert "/api/research-intake/neo4j-write-live-runner" in boot
     assert "EXECUTE_NEO4J_WRITE_LIVE_RUNNER" in boot
     assert "neo4j_write_success_verification" in boot
+
+
+def _write_neo4j_success_verification_for_paperclip_gate(package_dir, payload_sha256="sha-paperclip-reflection-gate"):
+    promotion_dir = package_dir / "promotion"
+    promotion_dir.mkdir(parents=True, exist_ok=True)
+    verification = {
+        "package_id": package_dir.name,
+        "status": "neo4j_write_success_verified",
+        "payload_sha256": payload_sha256,
+        "opencrab_result_id": "fake-opencrab-result",
+        "neo4j_result_id": "fake-neo4j-result",
+        "request_counts": {"claims": 1, "nodes": 1, "evidence": 1},
+        "written_counts": {"claims": 1, "nodes": 1, "evidence": 1},
+        "checks": {
+            "status_completed": True,
+            "payload_sha256_match": True,
+            "written_counts_match_request": True,
+            "neo4j_result_id_present": True,
+        },
+        "external_mutations": {"opencrab_sync": True, "neo4j_write": True, "paperclip_reflection": False},
+        "external_mutations_performed": ["opencrab_sync", "neo4j_write"],
+        "paperclip_reflection": False,
+    }
+    (promotion_dir / "neo4j_write_success_verification.json").write_text(json.dumps(verification, indent=2), encoding="utf-8")
+    return verification
+
+
+def test_research_intake_paperclip_reflection_approval_gate_requires_neo4j_success(tmp_path, monkeypatch):
+    import api.routes as routes
+
+    _prepare_opencrab_execution_package(tmp_path)
+    monkeypatch.setattr(routes, "STATE_DIR", tmp_path)
+    handler = DummyHandler()
+    routes._handle_research_intake_paperclip_reflection_approval_gate(handler, {
+        "package_id": "research-intake-test-package",
+        "approval_phrase": "APPROVE_PAPERCLIP_REFLECTION_AFTER_NEO4J_WRITE",
+        "expected_payload_sha256": "sha-paperclip-reflection-gate",
+    })
+
+    payload = handler.json_payload()
+    assert handler.status == 409
+    assert payload["status"] == "paperclip_reflection_approval_gate_blocked"
+    assert payload["external_mutations"] == {"opencrab_sync": True, "neo4j_write": True, "paperclip_reflection": False}
+
+
+def test_research_intake_paperclip_reflection_approval_gate_writes_artifact_without_reflection(tmp_path, monkeypatch):
+    import api.routes as routes
+
+    package_dir = _prepare_opencrab_execution_package(tmp_path)
+    monkeypatch.setattr(routes, "STATE_DIR", tmp_path)
+    verification = _write_neo4j_success_verification_for_paperclip_gate(package_dir)
+    handler = DummyHandler()
+    routes._handle_research_intake_paperclip_reflection_approval_gate(handler, {
+        "package_id": "research-intake-test-package",
+        "approval_phrase": "APPROVE_PAPERCLIP_REFLECTION_AFTER_NEO4J_WRITE",
+        "expected_payload_sha256": verification["payload_sha256"],
+        "operator": "test-user",
+    })
+
+    payload = handler.json_payload()
+    assert handler.status == 200
+    assert payload["status"] == "paperclip_reflection_approval_gate_ready"
+    assert payload["opencrab_result_id"] == "fake-opencrab-result"
+    assert payload["neo4j_result_id"] == "fake-neo4j-result"
+    assert payload["external_mutations"] == {"opencrab_sync": True, "neo4j_write": True, "paperclip_reflection": False}
+    gate = json.loads((package_dir / "promotion" / "paperclip_reflection_approval_gate.json").read_text(encoding="utf-8"))
+    assert gate["next_approval_required"] == "EXECUTE_PAPERCLIP_REFLECTION_AFTER_NEO4J_WRITE"
+    assert gate["guards"]["paperclip_reflection_executed"] is False
+    assert gate["external_mutations_performed"] == ["opencrab_sync", "neo4j_write"]
+
+
+def test_research_intake_paperclip_reflection_approval_gate_rejects_failed_checks(tmp_path, monkeypatch):
+    import api.routes as routes
+
+    package_dir = _prepare_opencrab_execution_package(tmp_path)
+    monkeypatch.setattr(routes, "STATE_DIR", tmp_path)
+    verification = _write_neo4j_success_verification_for_paperclip_gate(package_dir)
+    verification["checks"]["written_counts_match_request"] = False
+    (package_dir / "promotion" / "neo4j_write_success_verification.json").write_text(json.dumps(verification, indent=2), encoding="utf-8")
+    handler = DummyHandler()
+    routes._handle_research_intake_paperclip_reflection_approval_gate(handler, {
+        "package_id": "research-intake-test-package",
+        "approval_phrase": "APPROVE_PAPERCLIP_REFLECTION_AFTER_NEO4J_WRITE",
+        "expected_payload_sha256": verification["payload_sha256"],
+    })
+
+    payload = handler.json_payload()
+    assert handler.status == 409
+    assert payload["failed_checks"] == ["written_counts_match_request"]
+    assert payload["external_mutations"] == {"opencrab_sync": True, "neo4j_write": True, "paperclip_reflection": False}
+
+
+def test_research_intake_paperclip_reflection_approval_gate_ui_controls_exist():
+    html = read("static/index.html")
+    boot = read("static/boot.js")
+    assert "researchIntakePaperclipReflectionApprovalGate" in html
+    assert "function createResearchIntakePaperclipReflectionApprovalGate" in boot
+    assert "/api/research-intake/paperclip-reflection-approval-gate" in boot
+    assert "APPROVE_PAPERCLIP_REFLECTION_AFTER_NEO4J_WRITE" in boot
+    assert "paperclip_reflection_approval_gate" in boot
 
 
 def test_research_intake_paperclip_opencrab_live_runner_health_reports_missing_url_without_mutation(monkeypatch):

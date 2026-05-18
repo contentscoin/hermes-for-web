@@ -439,3 +439,8 @@ After the Neo4j write runner stub, the WebUI can now create a locked live execut
 ### Completed: Neo4j write live runner invocation
 
 The WebUI can now invoke a separately approved Neo4j write runner behind `HERMES_NEO4J_ENABLE_LIVE_WRITE` and `EXECUTE_NEO4J_WRITE_LIVE_RUNNER`. Failures leave retry-guarded artifacts; successes create a result plus success verification artifact. Paperclip reflection remains a later, separately approved stage.
+
+
+### Completed: Paperclip reflection approval gate after Neo4j success
+
+Research Intake now has a final approval boundary after verified Neo4j write success and before any Paperclip reflection. The gate requires `APPROVE_PAPERCLIP_REFLECTION_AFTER_NEO4J_WRITE`, stores OpenCrab/Neo4j result ids and payload checksum, and leaves Paperclip reflection for a separately approved runner.
