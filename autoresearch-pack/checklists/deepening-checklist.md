@@ -1,60 +1,53 @@
 # AutoResearch Deepening Checklist
 
-## A. 질문 품질
+## Question quality
 
-- [ ] 질문이 너무 넓지 않은가?
-- [ ] 조사 기간/지역/대상이 명확한가?
-- [ ] 결과물을 어디에 쓸지 명확한가?
-- [ ] 제외할 자료나 관점이 명시되었는가?
-- [ ] 하위 질문이 3~7개로 나뉘었는가?
-- [ ] evidence standard가 정해졌는가?
+- [ ] Original question captured
+- [ ] Refined research question written
+- [ ] Scope and exclusions explicit
+- [ ] Target output selected
+- [ ] Assumptions labelled
 
-## B. 출처 품질
+## Source quality
 
-- [ ] 공식/1차 자료가 있는가?
-- [ ] 독립적인 2개 이상의 출처가 같은 사실을 지지하는가?
-- [ ] 커뮤니티/소셜 반응은 표본 편향을 표시했는가?
-- [ ] 광고성/스폰서성 자료를 분리했는가?
-- [ ] 날짜가 오래된 자료를 최신처럼 쓰지 않았는가?
-- [ ] 출처별 신뢰도 high/medium/low가 표시되었는가?
-- [ ] 접근 제한/API/search limitation이 적혔는가?
+- [ ] Source table includes URLs or local paths
+- [ ] Primary/official sources checked where possible
+- [ ] At least two source groups considered when available
+- [ ] Dates/time range recorded
+- [ ] Limitations and sampling bias stated
+- [ ] Credentials not printed or stored
 
-## C. 해석 품질
+## Interpretation quality
 
-- [ ] 사실과 해석을 분리했는가?
-- [ ] 가설과 확인된 사실을 혼동하지 않았는가?
-- [ ] 반대 근거 또는 충돌하는 자료를 확인했는가?
-- [ ] 불확실성을 명시했는가?
-- [ ] 결론이 출처 강도에 비해 과장되지 않았는가?
-- [ ] 다음 loop에서 검증할 unknown이 남아 있는가?
+- [ ] Facts are source-backed
+- [ ] Interpretation is labelled
+- [ ] Hypotheses are labelled
+- [ ] Unknowns remain visible
+- [ ] Contradictory evidence noted
+- [ ] Confidence level stated
 
-## D. 심화 각도 후보
+## Deepening angle candidates
 
-- [ ] 시장/고객 관점
-- [ ] 경쟁사 관점
-- [ ] 기술/구현 관점
-- [ ] 가격/사업모델 관점
-- [ ] 규제/법무/리스크 관점
-- [ ] 최근 반응/X/Reddit 관점
-- [ ] 학술/논문 관점
-- [ ] GitHub/오픈소스 생태계 관점
-- [ ] 미디어/YouTube/블로그 관점
+For each candidate:
+- [ ] decision impact
+- [ ] evidence gap
+- [ ] expected method
+- [ ] expected output
+- [ ] risk if ignored
 
-## E. 반복 실행 결정
+## Repeat-loop decision
 
-- [ ] stop — 충분한 근거와 다음 액션이 있음
-- [ ] deepen — 특정 각도 추가 조사
-- [ ] broaden — 범위/출처 확대
-- [ ] verify — 반대 근거/숫자 검증
-- [ ] convert — note/brief/post/memo 변환
-- [ ] approval wait — 외부 반영 승인 대기
+- [ ] stop
+- [ ] deepen
+- [ ] broaden
+- [ ] verify
+- [ ] convert
+- [ ] approval wait
 
-## F. 최종 산출 전 확인
+## Final-output checks
 
-- [ ] 핵심 요약 5줄 이하가 있는가?
-- [ ] 출처 표가 있는가?
-- [ ] facts / interpretations / hypotheses / unknowns가 분리되었는가?
-- [ ] 바로 실행 가능한 다음 액션이 있는가?
-- [ ] 후속 질문 또는 심화 후보가 남아 있는가?
-- [ ] Paperclip 반영이 필요한 경우 승인 대기 문구가 있는가?
-- [ ] Telegram 전송 또는 외부 게시가 필요한 경우 명시 승인 전 멈췄는가?
+- [ ] Executive summary included
+- [ ] Source table included
+- [ ] Facts/interpretations/hypotheses/unknowns separated
+- [ ] Next actions included
+- [ ] External action approval gate stated

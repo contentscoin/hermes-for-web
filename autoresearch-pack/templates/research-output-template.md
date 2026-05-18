@@ -1,107 +1,79 @@
 # AutoResearch Output Template
 
-# <조사 제목>
+## Executive summary
 
-## 1. Executive Summary
+- Bottom line:
+- Confidence level:
+- Recommended next action:
 
-- 핵심 결론 1:
-- 핵심 결론 2:
-- 핵심 결론 3:
-- 의사결정에 중요한 포인트:
-- 현재 불확실성:
-- 추천 다음 액션:
+## Refined question
 
-## 2. Refined Question
+[정제된 조사 질문]
 
-- 원문 질문:
-- 정제된 질문:
-- 조사 범위:
-- 제외 범위:
-- 목표 산출물:
-- loop mode: quick / standard / deep
+## Method
 
-## 3. Method
+- Date/time:
+- Scope:
+- Source groups:
+- Search/query strategy:
+- Known limitations:
 
-- 검색/조사 방식:
-- 사용한 도구:
-- 포함한 출처 유형:
-- 제외한 출처 유형:
-- known limitations:
+## Source table
 
-## 4. Source Table
-
-| # | 출처 | 유형 | 날짜 | 핵심 내용 | 신뢰도 | 링크/경로 | 사용 이유 |
+| # | Source | Type | Date | Key evidence | Reliability | Limitation | URL / path |
 |---|---|---|---|---|---|---|---|
-| 1 |  | official/academic/media/community/social/code/video |  |  | high/medium/low |  |  |
+| 1 | | | | | | | |
 
-## 5. Findings
-
-### 확인된 사실 / Facts
+## Findings: source-backed facts
 
 1.
 2.
 3.
 
-### 패턴 / Patterns
+## Interpretation matrix
 
-1.
-2.
-3.
-
-### 충돌/논쟁 지점 / Contradictions
-
-1.
-2.
-3.
-
-## 6. Interpretation Matrix
-
-| 구분 | 내용 | 근거 | 신뢰도 |
-|---|---|---|---|
-| Facts | | | |
-| Interpretations | | | |
-| Hypotheses | | | |
-| Unknowns | | | |
-
-## 7. Deepening Angles
-
-| 각도 | 왜 중요한가 | 추가로 볼 출처 | 예상 산출 | 우선순위 |
+| Category | Statement | Evidence basis | Confidence | Caveat |
 |---|---|---|---|---|
-|  |  |  |  | high/medium/low |
+| Fact | | | | |
+| Interpretation | | | | |
+| Hypothesis | | | | |
+| Unknown | | | | |
 
-Recommended next loop:
-- [ ] stop
-- [ ] deepen: <angle>
-- [ ] broaden: <scope/source>
-- [ ] verify contrary evidence
-- [ ] convert output
+## Deepening angles
 
-## 8. Deep Dive Result, if executed
+| Priority | Angle | Why it matters | Suggested method | Expected output |
+|---|---|---|---|---|
+| 1 | | | | |
+| 2 | | | | |
+| 3 | | | | |
 
-- 선택한 각도:
-- 추가 출처:
-- 새로 확인된 사실:
-- 바뀐 해석:
-- 여전히 남은 unknown:
+## Optional deep dive result
 
-## 9. Next Actions
+- Selected angle:
+- Additional sources:
+- What changed from broad scan:
+- Remaining uncertainty:
 
-- [ ]
-- [ ]
-- [ ]
+## Next loop decision
 
-## 10. Optional Output Conversion
+Choose one:
 
-선택 가능한 후속 산출물:
-- [ ] Obsidian note
-- [ ] Posting draft
-- [ ] Decision memo
-- [ ] Paperclip issue draft, 승인 후 반영
-- [ ] Follow-up AutoResearch loop
+- stop: enough evidence and action is clear
+- deepen: focus on one unresolved angle
+- broaden: expand source/market/period
+- verify: test contrary evidence or numeric claims
+- convert: turn into note/brief/post/memo
+- approval wait: pause before external action
 
-## 11. Approval Gate
+Recommended decision:
 
-- Paperclip reflection required: yes/no
-- Telegram delivery required: yes/no
-- External publishing required: yes/no
-- Explicit approval required before external action: yes
+## Next actions
+
+1.
+2.
+3.
+
+## Approval gate
+
+No Paperclip reflection, Telegram delivery, or publishing has been executed.
+If the user wants external action, prepare a decision report and ask for explicit execution approval.
