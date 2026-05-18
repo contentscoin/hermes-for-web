@@ -1840,3 +1840,8 @@ Neo4j write live runner tests cover missing execution gate, default no-runner fa
 ### Research Intake Paperclip reflection approval gate tests
 
 Paperclip reflection approval gate tests cover missing Neo4j success verification, failed verification checks, artifact creation without reflection, route registration, and WebUI control wiring. Browser smoke should verify the approval gate button/function, the exact approval phrase, the gate artifact label, and `Paperclip reflection: not executed`.
+
+
+### Research Intake Paperclip reflection runner stub tests
+
+Paperclip reflection runner stub tests cover missing approval gate, checksum mismatch, request/response schema artifact creation without reflection, route registration, and WebUI control wiring. Browser smoke should verify the runner stub button/function, exact approval phrase, result artifact label, expected schema fields, and `Paperclip reflection: not executed`.

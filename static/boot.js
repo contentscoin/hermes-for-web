@@ -1108,6 +1108,8 @@ function _researchIntakeSetApprovalEnabled(enabled){
   if(neo4jLiveRunnerBtn) neo4jLiveRunnerBtn.disabled=!enabled;
   const paperclipReflectionGateBtn=$('researchIntakePaperclipReflectionApprovalGate');
   if(paperclipReflectionGateBtn) paperclipReflectionGateBtn.disabled=!enabled;
+  const paperclipReflectionStubBtn=$('researchIntakePaperclipReflectionRunnerStub');
+  if(paperclipReflectionStubBtn) paperclipReflectionStubBtn.disabled=!enabled;
 }
 function _researchIntakeRenderReview(data){
   const panel=$('researchIntakeReviewPanel');
@@ -1581,6 +1583,33 @@ async function createResearchIntakePaperclipReflectionApprovalGate(){
     return null;
   }
 }
+async function runResearchIntakePaperclipReflectionRunnerStub(){
+  const packageId=_researchIntakeCurrentPackage;
+  if(!packageId){_researchIntakeSetResult('먼저 Paperclip reflection approval gate를 생성하세요.', true);return null;}
+  _researchIntakeSetResult('Paperclip reflection runner stub 생성 중... 실제 Paperclip reflection은 하지 않습니다.', false);
+  try{
+    const res=await fetch(new URL('/api/research-intake/paperclip-reflection-runner-stub',location.origin).href,{
+      method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+        package_id:packageId,
+        approval_phrase:'EXECUTE_PAPERCLIP_REFLECTION_AFTER_NEO4J_WRITE',
+        operator:'webui-user'
+      })
+    });
+    const data=await res.json();
+    if(!res.ok&&res.status!==403&&res.status!==409) throw new Error(data.error||'paperclip_reflection_runner_stub_result failed');
+    const panel=$('researchIntakeReviewPanel');
+    if(panel){
+      const req=data.would_request||{};
+      const schema=data.expected_response_schema||{};
+      panel.innerHTML=`<div class="research-intake-final-report"><strong>Paperclip reflection runner stub</strong><div>${esc(data.status||'paperclip_reflection_runner_stub_blocked')} · tool: ${esc(req.tool||'paperclip.reflect_research_intake_after_neo4j_write')}</div><pre>${esc(`Approval phrase: EXECUTE_PAPERCLIP_REFLECTION_AFTER_NEO4J_WRITE\nPayload SHA-256: ${data.payload_sha256||''}\nResult artifact: paperclip_reflection_runner_stub_result\nExpected response schema: ${schema.version||'research-intake-paperclip-reflection-runner/v1'}\nRequired fields: ${(schema.required_fields||['status','payload_sha256','paperclip_reflection_id','reflected_counts']).join(', ')}\nOpenCrab result id: ${req.opencrab_result_id||''}\nNeo4j result id: ${req.neo4j_result_id||''}\n\nMutations:\nOpenCrab sync: ${data.external_mutations&&data.external_mutations.opencrab_sync?'already executed':'not executed'}\nNeo4j write: ${data.external_mutations&&data.external_mutations.neo4j_write?'already executed/verified':'not executed'}\nPaperclip reflection: not executed\n\nThis only fixes the Paperclip reflection request/response schema.`)}</pre></div>`;
+    }
+    _researchIntakeSetResult(data.status==='paperclip_reflection_runner_stub_ready'?'Paperclip reflection runner stub 준비 완료 · 실제 reflection 없음':'Paperclip reflection runner stub 차단 · approval gate/승인 문구 확인', data.status!=='paperclip_reflection_runner_stub_ready');
+    return data;
+  }catch(e){
+    _researchIntakeSetResult('Paperclip reflection runner stub 실패: '+(e.message||e), true);
+    return null;
+  }
+}
 async function createResearchIntakeFinalApprovalPrompt(){
   const packageId=_researchIntakeCurrentPackage;
   if(!packageId){_researchIntakeSetResult('먼저 최종 실행 decision report를 생성하세요.', true);return null;}
@@ -1646,5 +1675,6 @@ window.runResearchIntakeNeo4jWriteRunnerStub=runResearchIntakeNeo4jWriteRunnerSt
 window.createResearchIntakeNeo4jWriteExecutionGate=createResearchIntakeNeo4jWriteExecutionGate;
 window.runResearchIntakeNeo4jWriteLiveRunner=runResearchIntakeNeo4jWriteLiveRunner;
 window.createResearchIntakePaperclipReflectionApprovalGate=createResearchIntakePaperclipReflectionApprovalGate;
+window.runResearchIntakePaperclipReflectionRunnerStub=runResearchIntakePaperclipReflectionRunnerStub;
 window.createResearchIntakeFinalApprovalPrompt=createResearchIntakeFinalApprovalPrompt;
 window.createResearchIntakeExecutionPlan=createResearchIntakeExecutionPlan;

@@ -515,6 +515,9 @@ def handle_post(handler, parsed) -> bool:
     if parsed.path == '/api/research-intake/paperclip-reflection-approval-gate':
         return _handle_research_intake_paperclip_reflection_approval_gate(handler, body)
 
+    if parsed.path == '/api/research-intake/paperclip-reflection-runner-stub':
+        return _handle_research_intake_paperclip_reflection_runner_stub(handler, body)
+
     # ── Workspace management (POST) ──
     if parsed.path == '/api/workspaces/add':
         return _handle_workspace_add(handler, body)
@@ -1947,6 +1950,124 @@ def _handle_research_intake_paperclip_reflection_approval_gate(handler, body):
             'gate_path': str(gate_path),
             'report_path': str(report_path),
             'next_approval_required': gate['next_approval_required'],
+            'external_mutations': mutations,
+        })
+    except FileNotFoundError as e:
+        return bad(handler, str(e), 404)
+    except (ValueError, PermissionError, OSError, json.JSONDecodeError) as e:
+        return bad(handler, str(e), 400)
+    except Exception as e:
+        return bad(handler, str(e), 500)
+
+
+def _handle_research_intake_paperclip_reflection_runner_stub(handler, body):
+    mutations = {'opencrab_sync': True, 'neo4j_write': True, 'paperclip_reflection': False}
+    try:
+        package_dir = _safe_research_intake_package_dir(str(body.get('package_id') or body.get('package_dir') or ''))
+        promotion_dir = package_dir / 'promotion'
+        gate_path = promotion_dir / 'paperclip_reflection_approval_gate.json'
+        if not gate_path.exists():
+            return j(handler, {
+                'ok': False,
+                'status': 'paperclip_reflection_runner_stub_blocked',
+                'error': 'paperclip_reflection_approval_gate.json is required before Paperclip reflection runner stub',
+                'external_mutations': mutations,
+            }, status=409)
+        gate = json.loads(gate_path.read_text(encoding='utf-8'))
+        if gate.get('status') != 'paperclip_reflection_approval_gate_ready':
+            return j(handler, {
+                'ok': False,
+                'status': 'paperclip_reflection_runner_stub_blocked',
+                'error': 'Paperclip reflection approval gate must be ready before runner stub',
+                'gate_status': gate.get('status'),
+                'external_mutations': mutations,
+            }, status=409)
+        payload_sha = str(gate.get('payload_sha256') or '').strip()
+        expected_sha = str(body.get('expected_payload_sha256') or '').strip()
+        if expected_sha and expected_sha != payload_sha:
+            return j(handler, {
+                'ok': False,
+                'status': 'paperclip_reflection_runner_stub_blocked',
+                'error': 'payload checksum mismatch',
+                'expected_payload_sha256': expected_sha,
+                'payload_sha256': payload_sha,
+                'external_mutations': mutations,
+            }, status=409)
+        required_phrase = 'EXECUTE_PAPERCLIP_REFLECTION_AFTER_NEO4J_WRITE'
+        if str(body.get('approval_phrase') or '').strip() != required_phrase:
+            return j(handler, {
+                'ok': False,
+                'status': 'paperclip_reflection_runner_stub_blocked',
+                'error': f'approval phrase must be {required_phrase}',
+                'external_mutations': mutations,
+            }, status=403)
+        counts = gate.get('written_counts') or gate.get('request_counts') or {}
+        would_request = {
+            'tool': 'paperclip.reflect_research_intake_after_neo4j_write',
+            'version': 'research-intake-paperclip-reflection-runner/v1',
+            'package_id': gate.get('package_id') or package_dir.name,
+            'payload_sha256': payload_sha,
+            'opencrab_result_id': gate.get('opencrab_result_id'),
+            'neo4j_result_id': gate.get('neo4j_result_id'),
+            'counts': counts,
+            'operator': str(body.get('operator') or 'webui-user'),
+        }
+        expected_response_schema = {
+            'version': 'research-intake-paperclip-reflection-runner/v1',
+            'required_fields': ['status', 'payload_sha256', 'paperclip_reflection_id', 'reflected_counts'],
+            'expected_status': 'paperclip_reflection_completed',
+        }
+        result = {
+            'package_id': would_request['package_id'],
+            'status': 'paperclip_reflection_runner_stub_ready',
+            'created_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+            'approval_phrase': required_phrase,
+            'approval_phrase_verified': True,
+            'payload_sha256': payload_sha,
+            'would_request': would_request,
+            'expected_response_schema': expected_response_schema,
+            'source_gate_path': str(gate_path),
+            'external_mutations': mutations,
+            'external_mutations_performed': ['opencrab_sync', 'neo4j_write'],
+            'guards': {
+                'paperclip_reflection_executed': False,
+                'requires_live_reflection_runner': True,
+                'paperclip_reflection_requires_separate_verification': True,
+            },
+        }
+        result_path = promotion_dir / 'paperclip_reflection_runner_stub_result.json'
+        report_path = promotion_dir / 'paperclip_reflection_runner_stub_result.md'
+        result_path.write_text(json.dumps(result, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+        report_path.write_text('\n'.join([
+            '# Paperclip Reflection Runner Stub Result',
+            '',
+            f"Package: {result['package_id']}",
+            f"Status: {result['status']}",
+            f"Tool: {would_request['tool']}",
+            f"Version: {would_request['version']}",
+            f"Payload SHA-256: {payload_sha}",
+            f"OpenCrab result id: {would_request.get('opencrab_result_id') or ''}",
+            f"Neo4j result id: {would_request.get('neo4j_result_id') or ''}",
+            '',
+            '## Expected Response Schema',
+            f"Version: {expected_response_schema['version']}",
+            f"Required fields: {', '.join(expected_response_schema['required_fields'])}",
+            f"Expected status: {expected_response_schema['expected_status']}",
+            '',
+            '## Guard',
+            '- Paperclip reflection: not executed',
+            '- This fixes request/response schema only.',
+        ]) + '\n', encoding='utf-8')
+        return j(handler, {
+            'ok': True,
+            'package_id': result['package_id'],
+            'package_dir': str(package_dir),
+            'status': result['status'],
+            'payload_sha256': payload_sha,
+            'would_request': would_request,
+            'expected_response_schema': expected_response_schema,
+            'result_path': str(result_path),
+            'report_path': str(report_path),
             'external_mutations': mutations,
         })
     except FileNotFoundError as e:

@@ -444,3 +444,8 @@ The WebUI can now invoke a separately approved Neo4j write runner behind `HERMES
 ### Completed: Paperclip reflection approval gate after Neo4j success
 
 Research Intake now has a final approval boundary after verified Neo4j write success and before any Paperclip reflection. The gate requires `APPROVE_PAPERCLIP_REFLECTION_AFTER_NEO4J_WRITE`, stores OpenCrab/Neo4j result ids and payload checksum, and leaves Paperclip reflection for a separately approved runner.
+
+
+### Completed: Paperclip reflection runner stub
+
+Research Intake now fixes the Paperclip reflection runner request/response schema after the reflection approval gate. The stub requires `EXECUTE_PAPERCLIP_REFLECTION_AFTER_NEO4J_WRITE`, emits `paperclip_reflection_runner_stub_result`, and leaves the actual Paperclip reflection live runner for a separate approval-gated implementation.
