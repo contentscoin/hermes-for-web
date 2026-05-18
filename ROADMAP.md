@@ -449,3 +449,7 @@ Research Intake now has a final approval boundary after verified Neo4j write suc
 ### Completed: Paperclip reflection runner stub
 
 Research Intake now fixes the Paperclip reflection runner request/response schema after the reflection approval gate. The stub requires `EXECUTE_PAPERCLIP_REFLECTION_AFTER_NEO4J_WRITE`, emits `paperclip_reflection_runner_stub_result`, and leaves the actual Paperclip reflection live runner for a separate approval-gated implementation.
+
+### Research Intake Paperclip reflection execution gate
+
+Completed: added the locked Paperclip reflection execution gate after the runner stub. The gate records the final pre-live-runner approval boundary and feature flag state without invoking Paperclip reflection. Next step: implement the Paperclip reflection live runner invocation with failure artifacts, retry guard, and success verification before any Paperclip record is treated as reflected.

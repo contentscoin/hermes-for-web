@@ -1110,6 +1110,8 @@ function _researchIntakeSetApprovalEnabled(enabled){
   if(paperclipReflectionGateBtn) paperclipReflectionGateBtn.disabled=!enabled;
   const paperclipReflectionStubBtn=$('researchIntakePaperclipReflectionRunnerStub');
   if(paperclipReflectionStubBtn) paperclipReflectionStubBtn.disabled=!enabled;
+  const paperclipReflectionExecutionGateBtn=$('researchIntakePaperclipReflectionExecutionGate');
+  if(paperclipReflectionExecutionGateBtn) paperclipReflectionExecutionGateBtn.disabled=!enabled;
 }
 function _researchIntakeRenderReview(data){
   const panel=$('researchIntakeReviewPanel');
@@ -1610,6 +1612,32 @@ async function runResearchIntakePaperclipReflectionRunnerStub(){
     return null;
   }
 }
+async function createResearchIntakePaperclipReflectionExecutionGate(){
+  const packageId=_researchIntakeCurrentPackage;
+  if(!packageId){_researchIntakeSetResult('먼저 Paperclip reflection runner stub를 생성하세요.', true);return null;}
+  _researchIntakeSetResult('Paperclip reflection execution gate 확인 중... HERMES_PAPERCLIP_ENABLE_REFLECTION_RUNNER가 꺼져 있으면 Locked 처리됩니다.', false);
+  try{
+    const res=await fetch(new URL('/api/research-intake/paperclip-reflection-execution-gate',location.origin).href,{
+      method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+        package_id:packageId,
+        approval_phrase:'FINAL_EXECUTE_PAPERCLIP_REFLECTION_AFTER_NEO4J_WRITE',
+        operator:'webui-user'
+      })
+    });
+    const data=await res.json();
+    if(!res.ok&&res.status!==403&&res.status!==409&&res.status!==423) throw new Error(data.error||'paperclip_reflection_execution_gate failed');
+    const panel=$('researchIntakeReviewPanel');
+    if(panel){
+      const req=data.would_request||{};
+      panel.innerHTML=`<div class="research-intake-final-report"><strong>Paperclip reflection execution gate</strong><div>${esc(data.status||'paperclip_reflection_execution_gate_locked')} · ${esc(data.feature_flag||'HERMES_PAPERCLIP_ENABLE_REFLECTION_RUNNER')}=${data.feature_flag_enabled?'true':'false'}</div><pre>${esc(`Approval phrase: FINAL_EXECUTE_PAPERCLIP_REFLECTION_AFTER_NEO4J_WRITE\nNext approval required: ${data.next_approval_required||'EXECUTE_PAPERCLIP_REFLECTION_LIVE_RUNNER'}\nPayload SHA-256: ${data.payload_sha256||''}\nGate artifact: paperclip_reflection_execution_gate\nTool: ${req.tool||'paperclip.reflect_research_intake_after_neo4j_write'}\n\nFeature flag: HERMES_PAPERCLIP_ENABLE_REFLECTION_RUNNER=${data.feature_flag_enabled?'enabled':'disabled / locked'}\n\nMutations:\nOpenCrab sync: ${data.external_mutations&&data.external_mutations.opencrab_sync?'already executed':'not executed'}\nNeo4j write: ${data.external_mutations&&data.external_mutations.neo4j_write?'already executed/verified':'not executed'}\nPaperclip reflection: not executed\n\nThis only creates the final locked gate before the live reflection runner.`)}</pre></div>`;
+    }
+    _researchIntakeSetResult(data.status==='paperclip_reflection_execution_gate_ready'?'Paperclip reflection execution gate 준비 완료 · 실제 reflection은 다음 live runner에서 별도 수행':'Paperclip reflection execution gate locked/blocked · feature flag 또는 stub/승인 문구 확인', data.status!=='paperclip_reflection_execution_gate_ready');
+    return data;
+  }catch(e){
+    _researchIntakeSetResult('Paperclip reflection execution gate 실패: '+(e.message||e), true);
+    return null;
+  }
+}
 async function createResearchIntakeFinalApprovalPrompt(){
   const packageId=_researchIntakeCurrentPackage;
   if(!packageId){_researchIntakeSetResult('먼저 최종 실행 decision report를 생성하세요.', true);return null;}
@@ -1676,5 +1704,6 @@ window.createResearchIntakeNeo4jWriteExecutionGate=createResearchIntakeNeo4jWrit
 window.runResearchIntakeNeo4jWriteLiveRunner=runResearchIntakeNeo4jWriteLiveRunner;
 window.createResearchIntakePaperclipReflectionApprovalGate=createResearchIntakePaperclipReflectionApprovalGate;
 window.runResearchIntakePaperclipReflectionRunnerStub=runResearchIntakePaperclipReflectionRunnerStub;
+window.createResearchIntakePaperclipReflectionExecutionGate=createResearchIntakePaperclipReflectionExecutionGate;
 window.createResearchIntakeFinalApprovalPrompt=createResearchIntakeFinalApprovalPrompt;
 window.createResearchIntakeExecutionPlan=createResearchIntakeExecutionPlan;

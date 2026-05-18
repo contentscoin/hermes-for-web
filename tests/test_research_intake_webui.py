@@ -33,6 +33,7 @@ def test_research_intake_routes_are_registered():
     assert "/api/research-intake/neo4j-write-live-runner" in routes
     assert "/api/research-intake/paperclip-reflection-approval-gate" in routes
     assert "/api/research-intake/paperclip-reflection-runner-stub" in routes
+    assert "/api/research-intake/paperclip-reflection-execution-gate" in routes
     assert "_handle_research_intake_image_draft" in routes
     assert "_handle_research_intake_review" in routes
 
@@ -1879,6 +1880,113 @@ def test_research_intake_paperclip_reflection_runner_stub_ui_controls_exist():
     assert "/api/research-intake/paperclip-reflection-runner-stub" in boot
     assert "EXECUTE_PAPERCLIP_REFLECTION_AFTER_NEO4J_WRITE" in boot
     assert "paperclip_reflection_runner_stub_result" in boot
+
+
+def _write_paperclip_reflection_runner_stub_for_execution_gate(package_dir, payload_sha256="sha-paperclip-reflection-exec-gate"):
+    gate = _write_paperclip_reflection_approval_gate_for_stub(package_dir, payload_sha256=payload_sha256)
+    promotion_dir = package_dir / "promotion"
+    stub = {
+        "package_id": package_dir.name,
+        "status": "paperclip_reflection_runner_stub_ready",
+        "payload_sha256": payload_sha256,
+        "would_request": {
+            "tool": "paperclip.reflect_research_intake_after_neo4j_write",
+            "version": "research-intake-paperclip-reflection-runner/v1",
+            "package_id": package_dir.name,
+            "payload_sha256": payload_sha256,
+            "opencrab_result_id": gate["opencrab_result_id"],
+            "neo4j_result_id": gate["neo4j_result_id"],
+            "counts": gate["written_counts"],
+            "operator": "test-user",
+        },
+        "expected_response_schema": {
+            "version": "research-intake-paperclip-reflection-runner/v1",
+            "required_fields": ["status", "payload_sha256", "paperclip_reflection_id", "reflected_counts"],
+            "expected_status": "paperclip_reflection_completed",
+        },
+        "external_mutations": {"opencrab_sync": True, "neo4j_write": True, "paperclip_reflection": False},
+        "external_mutations_performed": ["opencrab_sync", "neo4j_write"],
+        "guards": {"paperclip_reflection_executed": False},
+    }
+    (promotion_dir / "paperclip_reflection_runner_stub_result.json").write_text(json.dumps(stub, indent=2), encoding="utf-8")
+    return stub
+
+
+def test_research_intake_paperclip_reflection_execution_gate_requires_stub(tmp_path, monkeypatch):
+    import api.routes as routes
+
+    _prepare_opencrab_execution_package(tmp_path)
+    monkeypatch.setattr(routes, "STATE_DIR", tmp_path)
+    handler = DummyHandler()
+    routes._handle_research_intake_paperclip_reflection_execution_gate(handler, {
+        "package_id": "research-intake-test-package",
+        "approval_phrase": "FINAL_EXECUTE_PAPERCLIP_REFLECTION_AFTER_NEO4J_WRITE",
+        "expected_payload_sha256": "sha-paperclip-reflection-exec-gate",
+    })
+
+    payload = handler.json_payload()
+    assert handler.status == 409
+    assert payload["status"] == "paperclip_reflection_execution_gate_blocked"
+    assert payload["external_mutations"] == {"opencrab_sync": True, "neo4j_write": True, "paperclip_reflection": False}
+
+
+def test_research_intake_paperclip_reflection_execution_gate_locks_when_feature_flag_off(tmp_path, monkeypatch):
+    import api.routes as routes
+
+    package_dir = _prepare_opencrab_execution_package(tmp_path)
+    monkeypatch.setattr(routes, "STATE_DIR", tmp_path)
+    monkeypatch.delenv("HERMES_PAPERCLIP_ENABLE_REFLECTION_RUNNER", raising=False)
+    stub = _write_paperclip_reflection_runner_stub_for_execution_gate(package_dir)
+    handler = DummyHandler()
+    routes._handle_research_intake_paperclip_reflection_execution_gate(handler, {
+        "package_id": "research-intake-test-package",
+        "approval_phrase": "FINAL_EXECUTE_PAPERCLIP_REFLECTION_AFTER_NEO4J_WRITE",
+        "expected_payload_sha256": stub["payload_sha256"],
+        "operator": "test-user",
+    })
+
+    payload = handler.json_payload()
+    assert handler.status == 423
+    assert payload["status"] == "paperclip_reflection_execution_gate_locked"
+    assert payload["feature_flag"] == "HERMES_PAPERCLIP_ENABLE_REFLECTION_RUNNER"
+    assert payload["feature_flag_enabled"] is False
+    assert payload["external_mutations"] == {"opencrab_sync": True, "neo4j_write": True, "paperclip_reflection": False}
+    gate = json.loads((package_dir / "promotion" / "paperclip_reflection_execution_gate.json").read_text(encoding="utf-8"))
+    assert gate["guards"]["paperclip_reflection_executed"] is False
+    assert gate["next_approval_required"] == "EXECUTE_PAPERCLIP_REFLECTION_LIVE_RUNNER"
+
+
+def test_research_intake_paperclip_reflection_execution_gate_ready_when_feature_flag_on(tmp_path, monkeypatch):
+    import api.routes as routes
+
+    package_dir = _prepare_opencrab_execution_package(tmp_path)
+    monkeypatch.setattr(routes, "STATE_DIR", tmp_path)
+    monkeypatch.setenv("HERMES_PAPERCLIP_ENABLE_REFLECTION_RUNNER", "true")
+    stub = _write_paperclip_reflection_runner_stub_for_execution_gate(package_dir)
+    handler = DummyHandler()
+    routes._handle_research_intake_paperclip_reflection_execution_gate(handler, {
+        "package_id": "research-intake-test-package",
+        "approval_phrase": "FINAL_EXECUTE_PAPERCLIP_REFLECTION_AFTER_NEO4J_WRITE",
+        "expected_payload_sha256": stub["payload_sha256"],
+    })
+
+    payload = handler.json_payload()
+    assert handler.status == 200
+    assert payload["status"] == "paperclip_reflection_execution_gate_ready"
+    assert payload["would_request"]["tool"] == "paperclip.reflect_research_intake_after_neo4j_write"
+    assert payload["next_approval_required"] == "EXECUTE_PAPERCLIP_REFLECTION_LIVE_RUNNER"
+    assert payload["external_mutations"] == {"opencrab_sync": True, "neo4j_write": True, "paperclip_reflection": False}
+
+
+def test_research_intake_paperclip_reflection_execution_gate_ui_controls_exist():
+    html = read("static/index.html")
+    boot = read("static/boot.js")
+    assert "researchIntakePaperclipReflectionExecutionGate" in html
+    assert "function createResearchIntakePaperclipReflectionExecutionGate" in boot
+    assert "/api/research-intake/paperclip-reflection-execution-gate" in boot
+    assert "FINAL_EXECUTE_PAPERCLIP_REFLECTION_AFTER_NEO4J_WRITE" in boot
+    assert "HERMES_PAPERCLIP_ENABLE_REFLECTION_RUNNER" in boot
+    assert "paperclip_reflection_execution_gate" in boot
 
 
 def test_research_intake_paperclip_opencrab_live_runner_health_reports_missing_url_without_mutation(monkeypatch):

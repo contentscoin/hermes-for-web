@@ -1845,3 +1845,7 @@ Paperclip reflection approval gate tests cover missing Neo4j success verificatio
 ### Research Intake Paperclip reflection runner stub tests
 
 Paperclip reflection runner stub tests cover missing approval gate, checksum mismatch, request/response schema artifact creation without reflection, route registration, and WebUI control wiring. Browser smoke should verify the runner stub button/function, exact approval phrase, result artifact label, expected schema fields, and `Paperclip reflection: not executed`.
+
+### Research Intake Paperclip reflection execution gate tests
+
+Covered in `tests/test_research_intake_webui.py`: route registration, missing-stub blocking, feature-flag-off HTTP 423 locked behavior, feature-flag-on ready behavior, checksum/approval phrase handling through the handler, WebUI button/function wiring, and mutation truthfulness (`paperclip_reflection=false`). Browser smoke should confirm `researchIntakePaperclipReflectionExecutionGate`, `createResearchIntakePaperclipReflectionExecutionGate`, `FINAL_EXECUTE_PAPERCLIP_REFLECTION_AFTER_NEO4J_WRITE`, `HERMES_PAPERCLIP_ENABLE_REFLECTION_RUNNER`, and `paperclip_reflection_execution_gate` render without console errors.

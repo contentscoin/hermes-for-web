@@ -1700,3 +1700,7 @@ After a connector reports `opencrab_sync_completed`, the live runner writes `pro
 ### Research Intake Paperclip reflection runner stub
 
 `POST /api/research-intake/paperclip-reflection-runner-stub` requires `promotion/paperclip_reflection_approval_gate.json` with status `paperclip_reflection_approval_gate_ready`, exact `approval_phrase=EXECUTE_PAPERCLIP_REFLECTION_AFTER_NEO4J_WRITE`, and optional matching `expected_payload_sha256`. It writes `paperclip_reflection_runner_stub_result.json/md` with the fixed `paperclip.reflect_research_intake_after_neo4j_write` request schema and expected `research-intake-paperclip-reflection-runner/v1` response schema. It records OpenCrab and Neo4j as already performed and keeps `paperclip_reflection=false`; no reflection runner is invoked.
+
+### Research Intake Paperclip reflection execution gate
+
+`POST /api/research-intake/paperclip-reflection-execution-gate` requires `promotion/paperclip_reflection_runner_stub_result.json`, exact approval phrase `FINAL_EXECUTE_PAPERCLIP_REFLECTION_AFTER_NEO4J_WRITE`, and an optional matching payload checksum. It writes `promotion/paperclip_reflection_execution_gate.json/md` and checks `HERMES_PAPERCLIP_ENABLE_REFLECTION_RUNNER`; when disabled it returns HTTP 423 Locked. The gate preserves mutation truthfulness: OpenCrab sync and Neo4j write are already verified upstream, while Paperclip reflection remains false/not executed.

@@ -518,6 +518,9 @@ def handle_post(handler, parsed) -> bool:
     if parsed.path == '/api/research-intake/paperclip-reflection-runner-stub':
         return _handle_research_intake_paperclip_reflection_runner_stub(handler, body)
 
+    if parsed.path == '/api/research-intake/paperclip-reflection-execution-gate':
+        return _handle_research_intake_paperclip_reflection_execution_gate(handler, body)
+
     # ── Workspace management (POST) ──
     if parsed.path == '/api/workspaces/add':
         return _handle_workspace_add(handler, body)
@@ -2070,6 +2073,113 @@ def _handle_research_intake_paperclip_reflection_runner_stub(handler, body):
             'report_path': str(report_path),
             'external_mutations': mutations,
         })
+    except FileNotFoundError as e:
+        return bad(handler, str(e), 404)
+    except (ValueError, PermissionError, OSError, json.JSONDecodeError) as e:
+        return bad(handler, str(e), 400)
+    except Exception as e:
+        return bad(handler, str(e), 500)
+
+
+def _handle_research_intake_paperclip_reflection_execution_gate(handler, body):
+    mutations = {'opencrab_sync': True, 'neo4j_write': True, 'paperclip_reflection': False}
+    feature_flag = 'HERMES_PAPERCLIP_ENABLE_REFLECTION_RUNNER'
+    try:
+        package_dir = _safe_research_intake_package_dir(str(body.get('package_id') or body.get('package_dir') or ''))
+        promotion_dir = package_dir / 'promotion'
+        stub_path = promotion_dir / 'paperclip_reflection_runner_stub_result.json'
+        if not stub_path.exists():
+            return j(handler, {
+                'ok': False,
+                'status': 'paperclip_reflection_execution_gate_blocked',
+                'error': 'paperclip_reflection_runner_stub_result.json is required before Paperclip reflection execution gate',
+                'external_mutations': mutations,
+            }, status=409)
+        stub = json.loads(stub_path.read_text(encoding='utf-8'))
+        if stub.get('status') != 'paperclip_reflection_runner_stub_ready':
+            return j(handler, {
+                'ok': False,
+                'status': 'paperclip_reflection_execution_gate_blocked',
+                'error': 'Paperclip reflection runner stub must be ready before execution gate',
+                'stub_status': stub.get('status'),
+                'external_mutations': mutations,
+            }, status=409)
+        payload_sha = str(stub.get('payload_sha256') or '').strip()
+        expected_sha = str(body.get('expected_payload_sha256') or '').strip()
+        if expected_sha and expected_sha != payload_sha:
+            return j(handler, {
+                'ok': False,
+                'status': 'paperclip_reflection_execution_gate_blocked',
+                'error': 'payload checksum mismatch',
+                'expected_payload_sha256': expected_sha,
+                'payload_sha256': payload_sha,
+                'external_mutations': mutations,
+            }, status=409)
+        required_phrase = 'FINAL_EXECUTE_PAPERCLIP_REFLECTION_AFTER_NEO4J_WRITE'
+        if str(body.get('approval_phrase') or '').strip() != required_phrase:
+            return j(handler, {
+                'ok': False,
+                'status': 'paperclip_reflection_execution_gate_blocked',
+                'error': f'approval phrase must be {required_phrase}',
+                'external_mutations': mutations,
+            }, status=403)
+        flag_enabled = str(os.environ.get(feature_flag) or '').lower() in ('1', 'true', 'yes', 'on')
+        status = 'paperclip_reflection_execution_gate_ready' if flag_enabled else 'paperclip_reflection_execution_gate_locked'
+        would_request = stub.get('would_request') or {}
+        gate = {
+            'package_id': stub.get('package_id') or package_dir.name,
+            'status': status,
+            'created_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+            'operator': str(body.get('operator') or 'webui-user'),
+            'approval_phrase': required_phrase,
+            'approval_phrase_verified': True,
+            'payload_sha256': payload_sha,
+            'feature_flag': feature_flag,
+            'feature_flag_enabled': flag_enabled,
+            'would_request': would_request,
+            'expected_response_schema': stub.get('expected_response_schema') or {},
+            'source_stub_path': str(stub_path),
+            'next_approval_required': 'EXECUTE_PAPERCLIP_REFLECTION_LIVE_RUNNER',
+            'external_mutations': mutations,
+            'external_mutations_performed': ['opencrab_sync', 'neo4j_write'],
+            'guards': {
+                'paperclip_reflection_executed': False,
+                'requires_live_reflection_runner': True,
+                'reflection_runner_locked_until_feature_flag': not flag_enabled,
+                'paperclip_reflection_requires_separate_verification': True,
+            },
+        }
+        gate_path = promotion_dir / 'paperclip_reflection_execution_gate.json'
+        report_path = promotion_dir / 'paperclip_reflection_execution_gate.md'
+        gate_path.write_text(json.dumps(gate, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+        report_path.write_text('\n'.join([
+            '# Paperclip Reflection Execution Gate',
+            '',
+            f"Package: {gate['package_id']}",
+            f"Status: {gate['status']}",
+            f"Feature flag: {feature_flag}={str(flag_enabled).lower()}",
+            f"Payload SHA-256: {payload_sha}",
+            f"Tool: {would_request.get('tool') or 'paperclip.reflect_research_intake_after_neo4j_write'}",
+            '',
+            '## Guard',
+            '- Paperclip reflection: not executed',
+            f"- Next approval phrase: {gate['next_approval_required']}",
+        ]) + '\n', encoding='utf-8')
+        return j(handler, {
+            'ok': flag_enabled,
+            'package_id': gate['package_id'],
+            'package_dir': str(package_dir),
+            'status': status,
+            'payload_sha256': payload_sha,
+            'feature_flag': feature_flag,
+            'feature_flag_enabled': flag_enabled,
+            'would_request': would_request,
+            'expected_response_schema': gate['expected_response_schema'],
+            'gate_path': str(gate_path),
+            'report_path': str(report_path),
+            'next_approval_required': gate['next_approval_required'],
+            'external_mutations': mutations,
+        }, status=200 if flag_enabled else 423)
     except FileNotFoundError as e:
         return bad(handler, str(e), 404)
     except (ValueError, PermissionError, OSError, json.JSONDecodeError) as e:
