@@ -374,3 +374,8 @@ The live OpenCrab path now has contract tests and an audited handoff artifact. T
 ### Completed: OpenCrab connector runner dry-run adapter
 
 A dry-run connector adapter now validates the live sync contract and writes an audited result artifact without mutation. The next step is a real connector runner behind an additional explicit live approval and concrete connector selection.
+
+
+### Completed: OpenCrab connector runner approval gate
+
+A live-run approval gate now records connector allowlist approval and a payload checksum before a real OpenCrab runner can be attached. The next step is a separate live runner that verifies `opencrab_runner_approval.json` and the SHA-256 before performing any OpenCrab network mutation.

@@ -1770,3 +1770,8 @@ Contract tests cover both branches of `execute_live=true`: no connector env retu
 ### Research Intake connector runner dry-run tests
 
 The connector runner tests create a package-local `opencrab_live_sync_contract.json`, call `/api/research-intake/run-opencrab-connector` with `connector=dry_run_adapter` and `runner_mode=dry_run`, and assert that `opencrab_connector_run_result.json` records validated counts while all mutation flags remain false. A live runner mode against the dry-run adapter must return `live_connector_runner_not_enabled`.
+
+
+### Research Intake runner approval gate tests
+
+The runner approval gate tests create a package-local live sync contract, call `/api/research-intake/approve-opencrab-runner` with `approval_phrase=APPROVE_OPENCRAB_CONNECTOR_RUNNER`, and assert that `opencrab_runner_approval.json` records the connector, live runner mode, payload SHA-256, and empty `external_mutations_performed`. Disallowed connectors must be rejected by the allowlist before any artifact is treated as executable.

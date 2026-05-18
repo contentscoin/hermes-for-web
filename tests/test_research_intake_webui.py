@@ -20,6 +20,7 @@ def test_research_intake_routes_are_registered():
     assert "/api/research-intake/approval-prompt" in routes
     assert "/api/research-intake/execute-opencrab" in routes
     assert "/api/research-intake/run-opencrab-connector" in routes
+    assert "/api/research-intake/approve-opencrab-runner" in routes
     assert "_handle_research_intake_image_draft" in routes
     assert "_handle_research_intake_review" in routes
 
@@ -634,3 +635,85 @@ def test_research_intake_connector_runner_ui_controls_exist():
     assert "function runResearchIntakeOpenCrabConnector" in boot
     assert "/api/research-intake/run-opencrab-connector" in boot
     assert "dry_run_adapter" in boot
+
+
+def _write_live_contract_for_runner_gate(package_dir, connector="paperclip_opencrab_plugin"):
+    contract = {
+        "package_id": "research-intake-test-package",
+        "status": "opencrab_live_sync_contract_ready",
+        "contract_version": "research-intake-opencrab-live-sync/v1",
+        "connector": connector,
+        "payload": {
+            "package_id": "research-intake-test-package",
+            "action": "opencrab_sync",
+            "paths": {
+                "claims": str(package_dir / "ontology" / "claims.jsonl"),
+                "nodes": str(package_dir / "ontology" / "nodes.jsonl"),
+                "evidence": str(package_dir / "ontology" / "evidence.jsonl"),
+            },
+            "counts": {"claims": 1, "nodes": 1, "evidence": 1},
+            "final_execution_approval": "FINAL_EXECUTE_RESEARCH_INTAKE",
+        },
+        "external_mutations_performed": [],
+    }
+    (package_dir / "promotion" / "opencrab_live_sync_contract.json").write_text(json.dumps(contract), encoding="utf-8")
+    return contract
+
+
+def test_research_intake_opencrab_runner_approval_gate_writes_checksum_artifact_without_mutation(tmp_path, monkeypatch):
+    import api.routes as routes
+
+    package_dir = _prepare_opencrab_execution_package(tmp_path)
+    _write_live_contract_for_runner_gate(package_dir)
+    monkeypatch.setattr(routes, "STATE_DIR", tmp_path)
+    handler = DummyHandler()
+    routes._handle_research_intake_approve_opencrab_runner(handler, {
+        "package_id": "research-intake-test-package",
+        "connector": "paperclip_opencrab_plugin",
+        "runner_mode": "live",
+        "approval_phrase": "APPROVE_OPENCRAB_CONNECTOR_RUNNER",
+        "approver": "test-user",
+    })
+
+    payload = handler.json_payload()
+    assert handler.status == 200
+    assert payload["ok"] is True
+    assert payload["status"] == "opencrab_runner_approval_recorded"
+    assert payload["payload_sha256"]
+    assert payload["requires_separate_live_runner"] is True
+    assert payload["external_mutations"] == {"opencrab_sync": False, "neo4j_write": False, "paperclip_reflection": False}
+    approval = json.loads((package_dir / "promotion" / "opencrab_runner_approval.json").read_text(encoding="utf-8"))
+    assert approval["connector"] == "paperclip_opencrab_plugin"
+    assert approval["runner_mode"] == "live"
+    assert approval["approved"] is True
+    assert approval["payload_sha256"] == payload["payload_sha256"]
+    assert approval["external_mutations_performed"] == []
+    assert "mcp.opencrab.com" not in json.dumps(approval)
+
+
+def test_research_intake_opencrab_runner_approval_gate_rejects_disallowed_connector(tmp_path, monkeypatch):
+    import api.routes as routes
+
+    package_dir = _prepare_opencrab_execution_package(tmp_path)
+    _write_live_contract_for_runner_gate(package_dir, connector="unknown_connector")
+    monkeypatch.setattr(routes, "STATE_DIR", tmp_path)
+    handler = DummyHandler()
+    routes._handle_research_intake_approve_opencrab_runner(handler, {
+        "package_id": "research-intake-test-package",
+        "connector": "unknown_connector",
+        "runner_mode": "live",
+        "approval_phrase": "APPROVE_OPENCRAB_CONNECTOR_RUNNER",
+    })
+
+    payload = handler.json_payload()
+    assert handler.status == 400
+    assert "allowlist" in payload["error"]
+
+
+def test_research_intake_opencrab_runner_approval_gate_ui_controls_exist():
+    html = read("static/index.html")
+    boot = read("static/boot.js")
+    assert "researchIntakeApproveOpenCrabRunner" in html
+    assert "function approveResearchIntakeOpenCrabRunner" in boot
+    assert "/api/research-intake/approve-opencrab-runner" in boot
+    assert "APPROVE_OPENCRAB_CONNECTOR_RUNNER" in boot

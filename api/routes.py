@@ -2,6 +2,7 @@
 Hermes Web UI -- Route handlers for GET and POST endpoints.
 Extracted from server.py (Sprint 11) so server.py is a thin shell.
 """
+import hashlib
 import json
 import os
 import queue
@@ -477,6 +478,9 @@ def handle_post(handler, parsed) -> bool:
 
     if parsed.path == '/api/research-intake/run-opencrab-connector':
         return _handle_research_intake_run_opencrab_connector(handler, body)
+
+    if parsed.path == '/api/research-intake/approve-opencrab-runner':
+        return _handle_research_intake_approve_opencrab_runner(handler, body)
 
     # ── Workspace management (POST) ──
     if parsed.path == '/api/workspaces/add':
@@ -1316,6 +1320,107 @@ def _research_intake_execution_report_payload(package_dir: Path) -> dict | None:
         'requires_final_tool_execution': bool(plan.get('requires_final_tool_execution', True)),
         'external_mutations': external_mutations,
     }
+
+
+def _handle_research_intake_approve_opencrab_runner(handler, body):
+    try:
+        package_dir = _safe_research_intake_package_dir(str(body.get('package_id') or body.get('package_dir') or ''))
+        promotion_dir = package_dir / 'promotion'
+        contract_path = promotion_dir / 'opencrab_live_sync_contract.json'
+        if not contract_path.exists():
+            return bad(handler, 'opencrab_live_sync_contract.json is required before runner approval', 409)
+        contract_raw = contract_path.read_text(encoding='utf-8')
+        contract = json.loads(contract_raw)
+        if contract.get('status') != 'opencrab_live_sync_contract_ready':
+            return bad(handler, 'OpenCrab live sync contract is not ready', 409)
+        connector = str(body.get('connector') or contract.get('connector') or '').strip()
+        runner_mode = str(body.get('runner_mode') or 'live').strip()
+        allowlist = {'paperclip_opencrab_plugin'}
+        if connector not in allowlist:
+            return bad(handler, f'connector is not in live runner allowlist: {connector}', 400)
+        if runner_mode != 'live':
+            return bad(handler, 'runner approval gate is only for runner_mode=live', 400)
+        phrase = str(body.get('approval_phrase') or '').strip()
+        if phrase != 'APPROVE_OPENCRAB_CONNECTOR_RUNNER':
+            return bad(handler, 'approval_phrase must be APPROVE_OPENCRAB_CONNECTOR_RUNNER', 400)
+        payload = contract.get('payload') or {}
+        if payload.get('action') != 'opencrab_sync':
+            return bad(handler, 'contract payload action must be opencrab_sync', 400)
+        payload_canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
+        payload_sha256 = hashlib.sha256(payload_canonical.encode('utf-8')).hexdigest()
+        external_mutations = {
+            'opencrab_sync': False,
+            'neo4j_write': False,
+            'paperclip_reflection': False,
+        }
+        approval = {
+            'package_id': contract.get('package_id') or package_dir.name,
+            'status': 'opencrab_runner_approval_recorded',
+            'approved': True,
+            'connector': connector,
+            'runner_mode': runner_mode,
+            'approver': str(body.get('approver') or 'webui-user'),
+            'approval_phrase': phrase,
+            'created_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+            'contract_path': str(contract_path),
+            'contract_version': contract.get('contract_version'),
+            'payload_sha256': payload_sha256,
+            'requires_separate_live_runner': True,
+            'external_mutations_performed': [],
+            'external_mutations': external_mutations,
+            'next': 'Run the real OpenCrab connector only through a separate approved live runner using this checksum.',
+        }
+        approval_path = promotion_dir / 'opencrab_runner_approval.json'
+        report_path = promotion_dir / 'opencrab_runner_approval.md'
+        from api.opencrab_connector import redact_opencrab_endpoint
+        safe_approval = redact_opencrab_endpoint(approval)
+        approval_path.write_text(json.dumps(safe_approval, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+        report_path.write_text('\n'.join([
+            '# Research Intake OpenCrab Runner Approval Gate',
+            '',
+            f"Package: {safe_approval['package_id']}",
+            f"Status: {safe_approval['status']}",
+            f"Connector: {connector}",
+            f"Runner mode: {runner_mode}",
+            f"Payload SHA-256: {payload_sha256}",
+            '',
+            '## Mutation status',
+            '- OpenCrab sync: not executed by approval gate',
+            '- Neo4j write: not executed',
+            '- Paperclip reflection: not executed',
+            '',
+            'A separate live runner must verify this checksum before any network mutation.',
+        ]) + '\n', encoding='utf-8')
+        manifest_path = package_dir / 'manifest.json'
+        manifest = json.loads(manifest_path.read_text(encoding='utf-8')) if manifest_path.exists() else {}
+        manifest['opencrab_runner_approval'] = {
+            'status': safe_approval['status'],
+            'approval_path': str(approval_path),
+            'report_path': str(report_path),
+            'payload_sha256': payload_sha256,
+            'connector': connector,
+        }
+        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+        return j(handler, {
+            'ok': True,
+            'package_id': safe_approval['package_id'],
+            'package_dir': str(package_dir),
+            'status': safe_approval['status'],
+            'connector': connector,
+            'runner_mode': runner_mode,
+            'payload_sha256': payload_sha256,
+            'approval_path': str(approval_path),
+            'report_path': str(report_path),
+            'requires_separate_live_runner': True,
+            'external_mutations': external_mutations,
+            'next': safe_approval['next'],
+        })
+    except FileNotFoundError as e:
+        return bad(handler, str(e), 404)
+    except (ValueError, PermissionError, OSError, json.JSONDecodeError) as e:
+        return bad(handler, str(e), 400)
+    except Exception as e:
+        return bad(handler, str(e), 500)
 
 
 def _handle_research_intake_run_opencrab_connector(handler, body):
