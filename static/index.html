@@ -231,6 +231,7 @@
         <button id="researchIntakeRunOpenCrabLiveStub" class="cron-btn" style="width:100%;padding:6px 8px;margin-top:6px" onclick="runResearchIntakeOpenCrabLiveStub()" disabled title="Paperclip OpenCrab 실제 호출 위치/schema만 고정하는 stub입니다. 실제 sync는 하지 않습니다">Paperclip OpenCrab live runner stub</button>
         <button id="researchIntakeOpenCrabLiveFinalApprovalPrompt" class="cron-btn" style="width:100%;padding:6px 8px;margin-top:6px" onclick="createResearchIntakeOpenCrabLiveFinalApprovalPrompt()" disabled title="실제 OpenCrab live sync 직전 최종 승인 문구와 mutation 범위만 기록합니다">OpenCrab live 최종 승인 prompt</button>
         <button id="researchIntakeOpenCrabLiveExecutionGate" class="cron-btn" style="width:100%;padding:6px 8px;margin-top:6px" onclick="createResearchIntakeOpenCrabLiveExecutionGate()" disabled title="최종 승인 문구와 feature flag를 검증하고, flag off면 423 Locked로 차단합니다">OpenCrab live execution gate</button>
+        <button id="researchIntakeOpenCrabLiveRunner" class="cron-btn" style="width:100%;padding:6px 8px;margin-top:6px" onclick="runResearchIntakeOpenCrabLiveRunner()" disabled title="feature flag와 최종 승인 문구가 맞을 때만 Paperclip OpenCrab live runner를 호출합니다">OpenCrab live runner 실행</button>
         <div id="researchIntakeResult" class="setup-pack-help">OpenCrab sync / Neo4j write / Paperclip reflection 없이 review package만 생성합니다.</div>
         <div id="researchIntakeReviewPanel" class="research-intake-review"><div class="setup-pack-help">생성 후 visual evidence review가 여기에 표시됩니다.</div></div>
       </div>

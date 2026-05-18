@@ -1092,6 +1092,8 @@ function _researchIntakeSetApprovalEnabled(enabled){
   if(finalLivePromptBtn) finalLivePromptBtn.disabled=!enabled;
   const executionGateBtn=$('researchIntakeOpenCrabLiveExecutionGate');
   if(executionGateBtn) executionGateBtn.disabled=!enabled;
+  const liveRunnerBtn=$('researchIntakeOpenCrabLiveRunner');
+  if(liveRunnerBtn) liveRunnerBtn.disabled=!enabled;
 }
 function _researchIntakeRenderReview(data){
   const panel=$('researchIntakeReviewPanel');
@@ -1220,33 +1222,6 @@ async function createResearchIntakeOpenCrabExecutionRequest(executeLive=false){
     return data;
   }catch(e){
     _researchIntakeSetResult('OpenCrab 실행 준비 실패: '+(e.message||e), true);
-    return null;
-  }
-}
-async function createResearchIntakeOpenCrabLiveExecutionGate(){
-  const packageId=_researchIntakeCurrentPackage;
-  if(!packageId){_researchIntakeSetResult('먼저 OpenCrab live 최종 승인 prompt를 완료하세요.', true);return null;}
-  _researchIntakeSetResult('OpenCrab live execution gate 확인 중... HERMES_OPENCRAB_ENABLE_LIVE_RUNNER가 꺼져 있으면 Locked 처리됩니다.', false);
-  try{
-    const res=await fetch(new URL('/api/research-intake/opencrab-live-execution-gate',location.origin).href,{
-      method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-        package_id:packageId,
-        connector:'paperclip_opencrab_plugin',
-        approval_phrase:'EXECUTE_PAPERCLIP_OPENCRAB_LIVE_SYNC',
-        operator:'webui-user'
-      })
-    });
-    const data=await res.json();
-    if(!res.ok&&res.status!==423) throw new Error(data.error||'opencrab_live_execution_gate failed');
-    const panel=$('researchIntakeReviewPanel');
-    if(panel){
-      const req=data.would_request||{};
-      panel.innerHTML=`<div class="research-intake-final-report"><strong>OpenCrab live execution gate</strong><div>${esc(data.status||'opencrab_live_runner_locked')} · ${esc(data.feature_flag||'HERMES_OPENCRAB_ENABLE_LIVE_RUNNER')}=${data.feature_flag_enabled?'true':'false'}</div><pre>${esc(`Payload SHA-256: ${data.payload_sha256||''}\nTool: ${req.tool||'paperclip.opencrab.sync_research_intake'}\nGate artifact: opencrab_live_runner_execution_gate\n\nHERMES_OPENCRAB_ENABLE_LIVE_RUNNER: ${data.feature_flag_enabled?'enabled':'disabled / locked'}\n\nCurrent step:\nOpenCrab sync: not executed\nNeo4j write: not executed\nPaperclip reflection: not executed`)}</pre></div>`;
-    }
-    _researchIntakeSetResult(data.feature_flag_enabled?'OpenCrab live execution gate 준비 완료 · 아직 실제 호출은 별도 단계':'OpenCrab live execution gate locked · feature flag off · 실제 sync 없음', !data.feature_flag_enabled);
-    return data;
-  }catch(e){
-    _researchIntakeSetResult('OpenCrab live execution gate 실패: '+(e.message||e), true);
     return null;
   }
 }
@@ -1384,6 +1359,60 @@ async function runResearchIntakeOpenCrabConnector(){
     return null;
   }
 }
+async function createResearchIntakeOpenCrabLiveExecutionGate(){
+  const packageId=_researchIntakeCurrentPackage;
+  if(!packageId){_researchIntakeSetResult('먼저 OpenCrab live 최종 승인 prompt를 완료하세요.', true);return null;}
+  _researchIntakeSetResult('OpenCrab live execution gate 확인 중... HERMES_OPENCRAB_ENABLE_LIVE_RUNNER가 꺼져 있으면 Locked 처리됩니다.', false);
+  try{
+    const res=await fetch(new URL('/api/research-intake/opencrab-live-execution-gate',location.origin).href,{
+      method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+        package_id:packageId,
+        connector:'paperclip_opencrab_plugin',
+        approval_phrase:'EXECUTE_PAPERCLIP_OPENCRAB_LIVE_SYNC',
+        operator:'webui-user'
+      })
+    });
+    const data=await res.json();
+    if(!res.ok&&res.status!==423) throw new Error(data.error||'opencrab_live_execution_gate failed');
+    const panel=$('researchIntakeReviewPanel');
+    if(panel){
+      const req=data.would_request||{};
+      panel.innerHTML=`<div class="research-intake-final-report"><strong>OpenCrab live execution gate</strong><div>${esc(data.status||'opencrab_live_runner_locked')} · ${esc(data.feature_flag||'HERMES_OPENCRAB_ENABLE_LIVE_RUNNER')}=${data.feature_flag_enabled?'true':'false'}</div><pre>${esc(`Payload SHA-256: ${data.payload_sha256||''}\nTool: ${req.tool||'paperclip.opencrab.sync_research_intake'}\nGate artifact: opencrab_live_runner_execution_gate\n\nHERMES_OPENCRAB_ENABLE_LIVE_RUNNER: ${data.feature_flag_enabled?'enabled':'disabled / locked'}\n\nCurrent step:\nOpenCrab sync: not executed\nNeo4j write: not executed\nPaperclip reflection: not executed`)}</pre></div>`;
+    }
+    _researchIntakeSetResult(data.feature_flag_enabled?'OpenCrab live execution gate 준비 완료 · 실제 호출은 live runner 버튼에서 수행':'OpenCrab live execution gate locked · feature flag off · 실제 sync 없음', !data.feature_flag_enabled);
+    return data;
+  }catch(e){
+    _researchIntakeSetResult('OpenCrab live execution gate 실패: '+(e.message||e), true);
+    return null;
+  }
+}
+async function runResearchIntakeOpenCrabLiveRunner(){
+  const packageId=_researchIntakeCurrentPackage;
+  if(!packageId){_researchIntakeSetResult('먼저 OpenCrab live execution gate를 완료하세요.', true);return null;}
+  _researchIntakeSetResult('OpenCrab live runner 호출 중... 승인 문구와 feature flag를 재검증합니다.', false);
+  try{
+    const res=await fetch(new URL('/api/research-intake/opencrab-live-runner',location.origin).href,{
+      method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+        package_id:packageId,
+        connector:'paperclip_opencrab_plugin',
+        approval_phrase:'EXECUTE_PAPERCLIP_OPENCRAB_LIVE_SYNC',
+        operator:'webui-user'
+      })
+    });
+    const data=await res.json();
+    if(!res.ok&&res.status!==423) throw new Error(data.error||'opencrab_live_runner failed');
+    const panel=$('researchIntakeReviewPanel');
+    if(panel){
+      const result=data.connector_result||{};
+      panel.innerHTML=`<div class="research-intake-final-report"><strong>OpenCrab live runner result</strong><div>${esc(data.status||'opencrab_live_runner_locked')} · connector: ${esc(data.connector||'paperclip_opencrab_plugin')}</div><pre>${esc(`Payload SHA-256: ${data.payload_sha256||''}\nResult artifact: opencrab_live_runner_result\nOpenCrab result id: ${result.opencrab_result_id||''}\n\nMutations:\nOpenCrab sync: ${data.external_mutations&&data.external_mutations.opencrab_sync?'executed':'not executed'}\nNeo4j write: not executed\nPaperclip reflection: not executed`)}</pre></div>`;
+    }
+    _researchIntakeSetResult(data.status==='opencrab_live_runner_completed'?'OpenCrab live runner 완료 · Paperclip reflection/Neo4j write 없음':'OpenCrab live runner locked · 실제 sync 없음', data.status!=='opencrab_live_runner_completed');
+    return data;
+  }catch(e){
+    _researchIntakeSetResult('OpenCrab live runner 실패: '+(e.message||e), true);
+    return null;
+  }
+}
 async function createResearchIntakeFinalApprovalPrompt(){
   const packageId=_researchIntakeCurrentPackage;
   if(!packageId){_researchIntakeSetResult('먼저 최종 실행 decision report를 생성하세요.', true);return null;}
@@ -1442,5 +1471,6 @@ window.preflightResearchIntakeOpenCrabRunner=preflightResearchIntakeOpenCrabRunn
 window.runResearchIntakeOpenCrabLiveStub=runResearchIntakeOpenCrabLiveStub;
 window.createResearchIntakeOpenCrabLiveFinalApprovalPrompt=createResearchIntakeOpenCrabLiveFinalApprovalPrompt;
 window.createResearchIntakeOpenCrabLiveExecutionGate=createResearchIntakeOpenCrabLiveExecutionGate;
+window.runResearchIntakeOpenCrabLiveRunner=runResearchIntakeOpenCrabLiveRunner;
 window.createResearchIntakeFinalApprovalPrompt=createResearchIntakeFinalApprovalPrompt;
 window.createResearchIntakeExecutionPlan=createResearchIntakeExecutionPlan;

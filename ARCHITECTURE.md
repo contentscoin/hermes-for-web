@@ -1650,3 +1650,8 @@ The Research Intake WebUI now separates human review approval from execution. `P
 ### Research Intake Paperclip OpenCrab live execution gate
 
 `POST /api/research-intake/opencrab-live-execution-gate` validates the final approval phrase `EXECUTE_PAPERCLIP_OPENCRAB_LIVE_SYNC`, rechecks contract/approval/preflight/stub/final-prompt payload checksums, constructs the intended `paperclip.opencrab.sync_research_intake` request body, and writes `promotion/opencrab_live_runner_execution_gate.json` plus `.md`. If `HERMES_OPENCRAB_ENABLE_LIVE_RUNNER` is not enabled, the endpoint returns HTTP 423 Locked and performs no mutation. If enabled, it records readiness only; actual connector invocation remains a separate implementation step.
+
+
+### Research Intake Paperclip OpenCrab live runner invocation
+
+`POST /api/research-intake/opencrab-live-runner` is the first live invocation endpoint in the Research Intake OpenCrab chain. It requires `promotion/opencrab_live_runner_execution_gate.json`, exact phrase `EXECUTE_PAPERCLIP_OPENCRAB_LIVE_SYNC`, connector `paperclip_opencrab_plugin`, matching payload SHA-256, and `HERMES_OPENCRAB_ENABLE_LIVE_RUNNER=true`. The default invocation helper also requires `HERMES_OPENCRAB_LIVE_RUNNER_URL`; tests monkeypatch the helper so CI performs no network mutation. Successful calls write `promotion/opencrab_live_runner_result.json/md`, mark OpenCrab sync as executed, and keep Neo4j write plus Paperclip reflection disabled.

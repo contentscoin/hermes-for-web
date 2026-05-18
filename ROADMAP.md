@@ -399,3 +399,8 @@ The live sync path now has a final approval prompt artifact after the live runne
 ### Completed: Paperclip OpenCrab live execution gate
 
 The live sync path now has an execution gate that verifies the final user phrase and exact payload checksum, constructs the intended connector request, and blocks with HTTP 423 unless `HERMES_OPENCRAB_ENABLE_LIVE_RUNNER` is enabled. The next step is the actual Paperclip OpenCrab connector invocation behind this gate.
+
+
+### Completed: Paperclip OpenCrab live runner invocation
+
+The OpenCrab path now includes a live runner endpoint behind the execution gate and `HERMES_OPENCRAB_ENABLE_LIVE_RUNNER`. It constructs the approved request from the gate artifact, invokes a separated Paperclip/OpenCrab runner helper, stores a result artifact, and still keeps Neo4j write and Paperclip reflection disabled.

@@ -1795,3 +1795,8 @@ The final approval prompt tests prepare the full contract → approval → prefl
 ### Research Intake live execution gate tests
 
 The live execution gate tests prepare the full contract → approval → preflight → live-stub → final-prompt chain, call `/api/research-intake/opencrab-live-execution-gate`, and assert the feature-flag-off path returns HTTP 423 with a locked gate artifact. Wrong final approval phrases must fail with HTTP 403. Current-step mutation flags remain false in all cases.
+
+
+### Research Intake live runner invocation tests
+
+The live runner tests prepare the full gate chain, set `HERMES_OPENCRAB_ENABLE_LIVE_RUNNER=true`, monkeypatch `_invoke_paperclip_opencrab_live_runner`, and assert the endpoint writes `opencrab_live_runner_result.json/md` with `external_mutations.opencrab_sync=true` while Neo4j write and Paperclip reflection stay false. The feature-flag-off test confirms HTTP 423 Locked and no mutation flags.

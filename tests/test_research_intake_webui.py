@@ -25,6 +25,7 @@ def test_research_intake_routes_are_registered():
     assert "/api/research-intake/run-opencrab-live-stub" in routes
     assert "/api/research-intake/opencrab-live-final-approval-prompt" in routes
     assert "/api/research-intake/opencrab-live-execution-gate" in routes
+    assert "/api/research-intake/opencrab-live-runner" in routes
     assert "_handle_research_intake_image_draft" in routes
     assert "_handle_research_intake_review" in routes
 
@@ -1020,3 +1021,90 @@ def test_research_intake_paperclip_opencrab_live_execution_gate_ui_controls_exis
     assert "function createResearchIntakeOpenCrabLiveExecutionGate" in boot
     assert "/api/research-intake/opencrab-live-execution-gate" in boot
     assert "HERMES_OPENCRAB_ENABLE_LIVE_RUNNER" in boot
+
+
+def _prepare_execution_gate_for_live_runner(routes, package_dir, monkeypatch):
+    prompt = _prepare_final_approval_for_execution_gate(routes, package_dir)
+    monkeypatch.setenv("HERMES_OPENCRAB_ENABLE_LIVE_RUNNER", "true")
+    handler = DummyHandler()
+    routes._handle_research_intake_opencrab_live_execution_gate(handler, {
+        "package_id": "research-intake-test-package",
+        "connector": "paperclip_opencrab_plugin",
+        "approval_phrase": "EXECUTE_PAPERCLIP_OPENCRAB_LIVE_SYNC",
+        "expected_payload_sha256": prompt["payload_sha256"],
+        "operator": "test-user",
+    })
+    assert handler.status == 200
+    return handler.json_payload()
+
+
+def test_research_intake_paperclip_opencrab_live_runner_invokes_connector_when_gate_ready_and_flag_on(tmp_path, monkeypatch):
+    import api.routes as routes
+
+    package_dir = _prepare_opencrab_execution_package(tmp_path)
+    _write_live_contract_for_runner_gate(package_dir)
+    monkeypatch.setattr(routes, "STATE_DIR", tmp_path)
+    gate = _prepare_execution_gate_for_live_runner(routes, package_dir, monkeypatch)
+    calls = []
+
+    def fake_invoke(request):
+        calls.append(request)
+        return {
+            "status": "opencrab_sync_completed",
+            "synced_counts": request["counts"],
+            "opencrab_result_id": "fake-opencrab-result-1",
+            "payload_sha256": request["payload_sha256"],
+        }
+
+    monkeypatch.setattr(routes, "_invoke_paperclip_opencrab_live_runner", fake_invoke)
+    handler = DummyHandler()
+    routes._handle_research_intake_opencrab_live_runner(handler, {
+        "package_id": "research-intake-test-package",
+        "connector": "paperclip_opencrab_plugin",
+        "approval_phrase": "EXECUTE_PAPERCLIP_OPENCRAB_LIVE_SYNC",
+        "expected_payload_sha256": gate["payload_sha256"],
+        "operator": "test-user",
+    })
+
+    payload = handler.json_payload()
+    assert handler.status == 200
+    assert payload["ok"] is True
+    assert payload["status"] == "opencrab_live_runner_completed"
+    assert payload["connector_result"]["status"] == "opencrab_sync_completed"
+    assert calls and calls[0]["tool"] == "paperclip.opencrab.sync_research_intake"
+    assert payload["external_mutations"] == {"opencrab_sync": True, "neo4j_write": False, "paperclip_reflection": False}
+    result = json.loads((package_dir / "promotion" / "opencrab_live_runner_result.json").read_text(encoding="utf-8"))
+    assert result["external_mutations_performed"] == ["opencrab_sync"]
+    assert result["connector_result"]["payload_sha256"] == gate["payload_sha256"]
+    assert "mcp.opencrab.com" not in json.dumps(result)
+
+
+def test_research_intake_paperclip_opencrab_live_runner_rejects_when_feature_flag_off(tmp_path, monkeypatch):
+    import api.routes as routes
+
+    package_dir = _prepare_opencrab_execution_package(tmp_path)
+    _write_live_contract_for_runner_gate(package_dir)
+    monkeypatch.setattr(routes, "STATE_DIR", tmp_path)
+    gate = _prepare_execution_gate_for_live_runner(routes, package_dir, monkeypatch)
+    monkeypatch.delenv("HERMES_OPENCRAB_ENABLE_LIVE_RUNNER", raising=False)
+    handler = DummyHandler()
+    routes._handle_research_intake_opencrab_live_runner(handler, {
+        "package_id": "research-intake-test-package",
+        "connector": "paperclip_opencrab_plugin",
+        "approval_phrase": "EXECUTE_PAPERCLIP_OPENCRAB_LIVE_SYNC",
+        "expected_payload_sha256": gate["payload_sha256"],
+    })
+
+    payload = handler.json_payload()
+    assert handler.status == 423
+    assert payload["status"] == "opencrab_live_runner_locked"
+    assert payload["external_mutations"] == {"opencrab_sync": False, "neo4j_write": False, "paperclip_reflection": False}
+
+
+def test_research_intake_paperclip_opencrab_live_runner_ui_controls_exist():
+    html = read("static/index.html")
+    boot = read("static/boot.js")
+    assert "researchIntakeOpenCrabLiveRunner" in html
+    assert "function runResearchIntakeOpenCrabLiveRunner" in boot
+    assert "/api/research-intake/opencrab-live-runner" in boot
+    assert "opencrab_live_runner_result" in boot

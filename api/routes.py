@@ -494,6 +494,9 @@ def handle_post(handler, parsed) -> bool:
     if parsed.path == '/api/research-intake/opencrab-live-execution-gate':
         return _handle_research_intake_opencrab_live_execution_gate(handler, body)
 
+    if parsed.path == '/api/research-intake/opencrab-live-runner':
+        return _handle_research_intake_opencrab_live_runner(handler, body)
+
     # ── Workspace management (POST) ──
     if parsed.path == '/api/workspaces/add':
         return _handle_workspace_add(handler, body)
@@ -1332,6 +1335,123 @@ def _research_intake_execution_report_payload(package_dir: Path) -> dict | None:
         'requires_final_tool_execution': bool(plan.get('requires_final_tool_execution', True)),
         'external_mutations': external_mutations,
     }
+
+
+def _invoke_paperclip_opencrab_live_runner(request_payload):
+    """Invoke the approved Paperclip OpenCrab live runner.
+
+    The default implementation is intentionally explicit: operators must provide
+    HERMES_OPENCRAB_LIVE_RUNNER_URL for the Paperclip/OpenCrab bridge endpoint.
+    Tests monkeypatch this function so no network mutation occurs during CI.
+    """
+    runner_url = (os.environ.get('HERMES_OPENCRAB_LIVE_RUNNER_URL') or '').strip()
+    if not runner_url:
+        raise RuntimeError('HERMES_OPENCRAB_LIVE_RUNNER_URL is required for live runner invocation')
+    data = json.dumps(request_payload, ensure_ascii=False).encode('utf-8')
+    req = urllib.request.Request(runner_url, data=data, headers={'Content-Type': 'application/json'}, method='POST')
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return json.loads(resp.read().decode('utf-8') or '{}')
+
+
+def _handle_research_intake_opencrab_live_runner(handler, body):
+    no_mutations = {
+        'opencrab_sync': False,
+        'neo4j_write': False,
+        'paperclip_reflection': False,
+    }
+    success_mutations = {
+        'opencrab_sync': True,
+        'neo4j_write': False,
+        'paperclip_reflection': False,
+    }
+    required_phrase = 'EXECUTE_PAPERCLIP_OPENCRAB_LIVE_SYNC'
+    feature_flag = 'HERMES_OPENCRAB_ENABLE_LIVE_RUNNER'
+    try:
+        package_dir = _safe_research_intake_package_dir(str(body.get('package_id') or body.get('package_dir') or ''))
+        promotion_dir = package_dir / 'promotion'
+        gate_path = promotion_dir / 'opencrab_live_runner_execution_gate.json'
+        if not gate_path.exists():
+            return j(handler, {'error': 'opencrab_live_runner_execution_gate.json is required before live runner invocation', 'external_mutations': no_mutations}, status=409)
+        gate = json.loads(gate_path.read_text(encoding='utf-8'))
+        flag_enabled = str(os.environ.get(feature_flag) or '').lower() in ('1', 'true', 'yes', 'on')
+        if not flag_enabled:
+            return j(handler, {
+                'ok': False,
+                'status': 'opencrab_live_runner_locked',
+                'feature_flag': feature_flag,
+                'feature_flag_enabled': False,
+                'external_mutations': no_mutations,
+            }, status=423)
+        connector = str(body.get('connector') or gate.get('connector') or '').strip()
+        if connector != 'paperclip_opencrab_plugin':
+            return j(handler, {'error': f'unsupported live runner connector: {connector}', 'external_mutations': no_mutations}, status=400)
+        approval_phrase = str(body.get('approval_phrase') or '').strip()
+        if approval_phrase != required_phrase or not gate.get('approval_phrase_verified'):
+            return j(handler, {'error': 'final live approval phrase mismatch', 'external_mutations': no_mutations}, status=403)
+        if gate.get('status') != 'opencrab_live_runner_ready_to_execute' or not gate.get('feature_flag_enabled'):
+            return j(handler, {'error': 'execution gate is not ready to execute', 'external_mutations': no_mutations}, status=409)
+        request_payload = gate.get('would_request') or {}
+        if request_payload.get('tool') != 'paperclip.opencrab.sync_research_intake':
+            return j(handler, {'error': 'execution gate request tool mismatch', 'external_mutations': no_mutations}, status=409)
+        expected = str(body.get('expected_payload_sha256') or gate.get('payload_sha256') or '').strip()
+        if expected != gate.get('payload_sha256') or request_payload.get('payload_sha256') != gate.get('payload_sha256'):
+            return j(handler, {'error': 'payload checksum mismatch before live runner invocation', 'external_mutations': no_mutations}, status=409)
+        request_payload = dict(request_payload)
+        request_payload['operator'] = str(body.get('operator') or request_payload.get('operator') or 'webui-user')
+        connector_result = _invoke_paperclip_opencrab_live_runner(request_payload)
+        connector_result = connector_result if isinstance(connector_result, dict) else {'raw_result': connector_result}
+        if connector_result.get('payload_sha256') != gate.get('payload_sha256'):
+            return j(handler, {'error': 'connector result payload checksum mismatch', 'connector_result': connector_result, 'external_mutations': success_mutations}, status=502)
+        status_value = str(connector_result.get('status') or '')
+        if status_value != 'opencrab_sync_completed':
+            return j(handler, {'error': 'connector did not report opencrab_sync_completed', 'connector_result': connector_result, 'external_mutations': success_mutations}, status=502)
+        result = {
+            'package_id': gate.get('package_id') or package_dir.name,
+            'status': 'opencrab_live_runner_completed',
+            'created_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+            'connector': connector,
+            'payload_sha256': gate.get('payload_sha256'),
+            'request': request_payload,
+            'connector_result': connector_result,
+            'external_mutations': success_mutations,
+            'external_mutations_performed': ['opencrab_sync'],
+        }
+        from api.opencrab_connector import redact_opencrab_endpoint
+        safe_result = redact_opencrab_endpoint(result)
+        result_path = promotion_dir / 'opencrab_live_runner_result.json'
+        report_path = promotion_dir / 'opencrab_live_runner_result.md'
+        result_path.write_text(json.dumps(safe_result, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+        report_path.write_text('\n'.join([
+            '# Paperclip OpenCrab Live Runner Result',
+            '',
+            f"Package: {safe_result['package_id']}",
+            f"Status: {safe_result['status']}",
+            f"Connector: {connector}",
+            f"Payload SHA-256: {safe_result['payload_sha256']}",
+            '',
+            '## Mutations performed',
+            '- OpenCrab sync: executed',
+            '- Neo4j write: not executed',
+            '- Paperclip reflection: not executed',
+        ]) + '\n', encoding='utf-8')
+        return j(handler, {
+            'ok': True,
+            'package_id': safe_result['package_id'],
+            'package_dir': str(package_dir),
+            'status': safe_result['status'],
+            'connector': connector,
+            'payload_sha256': safe_result['payload_sha256'],
+            'connector_result': safe_result['connector_result'],
+            'result_path': str(result_path),
+            'report_path': str(report_path),
+            'external_mutations': success_mutations,
+        })
+    except FileNotFoundError as e:
+        return j(handler, {'error': str(e), 'external_mutations': no_mutations}, status=404)
+    except (ValueError, PermissionError, OSError, json.JSONDecodeError, TypeError, RuntimeError) as e:
+        return j(handler, {'error': str(e), 'external_mutations': no_mutations}, status=400)
+    except Exception as e:
+        return j(handler, {'error': str(e), 'external_mutations': no_mutations}, status=500)
 
 
 def _handle_research_intake_opencrab_live_execution_gate(handler, body):
