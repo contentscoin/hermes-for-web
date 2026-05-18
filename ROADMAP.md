@@ -424,3 +424,8 @@ The live runner now records a post-sync verification artifact before any future 
 ### Completed: Neo4j write approval gate after OpenCrab success verification
 
 After OpenCrab live runner success verification, the WebUI can now create a Neo4j write approval gate artifact. This records readiness and the next required approval phrase, but does not execute Neo4j writes or Paperclip reflection.
+
+
+### Completed: Neo4j write runner stub
+
+After the Neo4j write approval gate, the WebUI can now create a Neo4j write runner stub artifact. It fixes the request/response schema and approval phrase for a future real Neo4j writer, but performs no graph mutation.

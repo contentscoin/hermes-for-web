@@ -1820,3 +1820,8 @@ Success verification tests monkeypatch `_invoke_paperclip_opencrab_live_runner` 
 ### Research Intake Neo4j write approval gate tests
 
 Neo4j gate tests seed `opencrab_live_runner_success_verification.json`, then verify missing verification blocks with HTTP 409, wrong phrase returns HTTP 403, and a valid request writes `neo4j_write_approval_gate.json/md` while keeping `neo4j_write=false` and `paperclip_reflection=false`.
+
+
+### Research Intake Neo4j write runner stub tests
+
+Neo4j write runner stub tests seed `neo4j_write_approval_gate.json`, verify missing gate blocks with HTTP 409, wrong phrase returns HTTP 403, and a valid request writes `neo4j_write_runner_stub_result.json/md` with request/response schema while keeping `neo4j_write=false` and `paperclip_reflection=false`.

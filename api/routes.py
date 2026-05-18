@@ -503,6 +503,9 @@ def handle_post(handler, parsed) -> bool:
     if parsed.path == '/api/research-intake/neo4j-write-approval-gate':
         return _handle_research_intake_neo4j_write_approval_gate(handler, body)
 
+    if parsed.path == '/api/research-intake/neo4j-write-runner-stub':
+        return _handle_research_intake_neo4j_write_runner_stub(handler, body)
+
     # ── Workspace management (POST) ──
     if parsed.path == '/api/workspaces/add':
         return _handle_workspace_add(handler, body)
@@ -1478,6 +1481,123 @@ def _handle_research_intake_neo4j_write_approval_gate(handler, body):
             'report_path': str(report_path),
             'requires_separate_runner': True,
             'next_approval_required': gate['next_approval_required'],
+            'external_mutations': post_opencrab_mutations,
+        })
+    except FileNotFoundError as e:
+        return bad(handler, str(e), 404)
+    except (ValueError, PermissionError, OSError, json.JSONDecodeError) as e:
+        return bad(handler, str(e), 400)
+    except Exception as e:
+        return bad(handler, str(e), 500)
+
+
+def _handle_research_intake_neo4j_write_runner_stub(handler, body):
+    post_opencrab_mutations = {
+        'opencrab_sync': True,
+        'neo4j_write': False,
+        'paperclip_reflection': False,
+    }
+    try:
+        package_dir = _safe_research_intake_package_dir(str(body.get('package_id') or body.get('package_dir') or ''))
+        promotion_dir = package_dir / 'promotion'
+        gate_path = promotion_dir / 'neo4j_write_approval_gate.json'
+        if not gate_path.exists():
+            return j(handler, {
+                'ok': False,
+                'status': 'neo4j_write_runner_stub_blocked',
+                'error': 'neo4j_write_approval_gate.json is required before Neo4j write runner stub',
+                'external_mutations': post_opencrab_mutations,
+            }, status=409)
+        gate = json.loads(gate_path.read_text(encoding='utf-8'))
+        if gate.get('status') != 'neo4j_write_approval_gate_ready':
+            return j(handler, {
+                'ok': False,
+                'status': 'neo4j_write_runner_stub_blocked',
+                'error': 'Neo4j write approval gate must be ready before runner stub',
+                'gate_status': gate.get('status'),
+                'external_mutations': post_opencrab_mutations,
+            }, status=409)
+        expected_sha = str(body.get('expected_payload_sha256') or '').strip()
+        payload_sha = str(gate.get('payload_sha256') or '').strip()
+        if expected_sha and expected_sha != payload_sha:
+            return j(handler, {
+                'error': 'payload checksum mismatch',
+                'status': 'neo4j_write_runner_stub_blocked',
+                'expected_payload_sha256': expected_sha,
+                'payload_sha256': payload_sha,
+                'external_mutations': post_opencrab_mutations,
+            }, status=409)
+        approval_phrase = str(body.get('approval_phrase') or '').strip()
+        required_phrase = 'EXECUTE_NEO4J_WRITE_AFTER_OPENCRAB_SYNC'
+        if approval_phrase != required_phrase:
+            return j(handler, {
+                'error': f'approval phrase must be {required_phrase}',
+                'status': 'neo4j_write_runner_stub_blocked',
+                'external_mutations': post_opencrab_mutations,
+            }, status=403)
+        would_request = {
+            'tool': 'neo4j.write_research_intake_from_opencrab',
+            'version': 'research-intake-neo4j-write-runner/v1',
+            'package_id': gate.get('package_id') or package_dir.name,
+            'payload_sha256': payload_sha,
+            'opencrab_result_id': gate.get('opencrab_result_id'),
+            'counts': gate.get('synced_counts') or gate.get('request_counts') or {},
+            'operator': str(body.get('operator') or 'webui-user'),
+        }
+        expected_response_schema = {
+            'version': 'research-intake-neo4j-write-runner/v1',
+            'required_fields': ['status', 'payload_sha256', 'neo4j_result_id', 'written_counts'],
+            'status': 'neo4j_write_completed',
+        }
+        stub = {
+            'package_id': gate.get('package_id') or package_dir.name,
+            'status': 'neo4j_write_runner_stub_ready',
+            'created_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+            'approval_phrase': required_phrase,
+            'approval_phrase_verified': True,
+            'payload_sha256': payload_sha,
+            'source_gate_path': str(gate_path),
+            'would_request': would_request,
+            'request_schema': {
+                'tool': would_request['tool'],
+                'version': would_request['version'],
+                'required_fields': ['tool', 'version', 'package_id', 'payload_sha256', 'opencrab_result_id', 'counts'],
+            },
+            'expected_response_schema': expected_response_schema,
+            'external_mutations': post_opencrab_mutations,
+            'external_mutations_performed': ['opencrab_sync'],
+            'guards': {
+                'neo4j_write_executed': False,
+                'paperclip_reflection_executed': False,
+                'paperclip_reflection_requires_separate_approval': True,
+            },
+        }
+        stub_path = promotion_dir / 'neo4j_write_runner_stub_result.json'
+        report_path = promotion_dir / 'neo4j_write_runner_stub_result.md'
+        stub_path.write_text(json.dumps(stub, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+        report_path.write_text('\n'.join([
+            '# Neo4j Write Runner Stub Result',
+            '',
+            f"Package: {stub['package_id']}",
+            f"Status: {stub['status']}",
+            f"Tool: {would_request['tool']}",
+            f"Payload SHA-256: {payload_sha}",
+            '',
+            '## Guard',
+            '- Neo4j write: not executed',
+            '- Paperclip reflection: not executed',
+        ]) + '\n', encoding='utf-8')
+        return j(handler, {
+            'ok': True,
+            'package_id': stub['package_id'],
+            'package_dir': str(package_dir),
+            'status': stub['status'],
+            'payload_sha256': payload_sha,
+            'request_schema': stub['request_schema'],
+            'expected_response_schema': expected_response_schema,
+            'would_request': would_request,
+            'stub_path': str(stub_path),
+            'report_path': str(report_path),
             'external_mutations': post_opencrab_mutations,
         })
     except FileNotFoundError as e:

@@ -1100,6 +1100,8 @@ function _researchIntakeSetApprovalEnabled(enabled){
   if(liveRunnerBtn) liveRunnerBtn.disabled=!enabled;
   const neo4jGateBtn=$('researchIntakeNeo4jWriteApprovalGate');
   if(neo4jGateBtn) neo4jGateBtn.disabled=!enabled;
+  const neo4jStubBtn=$('researchIntakeNeo4jWriteRunnerStub');
+  if(neo4jStubBtn) neo4jStubBtn.disabled=!enabled;
 }
 function _researchIntakeRenderReview(data){
   const panel=$('researchIntakeReviewPanel');
@@ -1468,6 +1470,33 @@ async function createResearchIntakeNeo4jWriteApprovalGate(){
     return null;
   }
 }
+async function runResearchIntakeNeo4jWriteRunnerStub(){
+  const packageId=_researchIntakeCurrentPackage;
+  if(!packageId){_researchIntakeSetResult('먼저 Neo4j write approval gate를 생성하세요.', true);return null;}
+  _researchIntakeSetResult('Neo4j write runner stub 생성 중... 실제 Neo4j write/Paperclip reflection은 하지 않습니다.', false);
+  try{
+    const res=await fetch(new URL('/api/research-intake/neo4j-write-runner-stub',location.origin).href,{
+      method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+        package_id:packageId,
+        approval_phrase:'EXECUTE_NEO4J_WRITE_AFTER_OPENCRAB_SYNC',
+        operator:'webui-user'
+      })
+    });
+    const data=await res.json();
+    if(!res.ok&&res.status!==403&&res.status!==409) throw new Error(data.error||'neo4j_write_runner_stub_result failed');
+    const panel=$('researchIntakeReviewPanel');
+    if(panel){
+      const req=data.would_request||{};
+      const schema=data.expected_response_schema||{};
+      panel.innerHTML=`<div class="research-intake-final-report"><strong>Neo4j write runner stub</strong><div>${esc(data.status||'neo4j_write_runner_stub_blocked')} · tool: ${esc(req.tool||'neo4j.write_research_intake_from_opencrab')}</div><pre>${esc(`Approval phrase: EXECUTE_NEO4J_WRITE_AFTER_OPENCRAB_SYNC\nPayload SHA-256: ${data.payload_sha256||''}\nResult artifact: neo4j_write_runner_stub_result\nExpected response schema: ${schema.version||'research-intake-neo4j-write-runner/v1'}\nRequired fields: ${(schema.required_fields||['status','payload_sha256','neo4j_result_id','written_counts']).join(', ')}\n\nMutations:\nOpenCrab sync: ${data.external_mutations&&data.external_mutations.opencrab_sync?'already executed':'not executed'}\nNeo4j write: not executed\nPaperclip reflection: not executed\n\nThis only fixes the Neo4j write request/response schema.`)}</pre></div>`;
+    }
+    _researchIntakeSetResult(data.status==='neo4j_write_runner_stub_ready'?'Neo4j write runner stub 준비 완료 · 실제 Neo4j write 없음':'Neo4j write runner stub 차단 · approval gate/승인 문구 확인', data.status!=='neo4j_write_runner_stub_ready');
+    return data;
+  }catch(e){
+    _researchIntakeSetResult('Neo4j write runner stub 실패: '+(e.message||e), true);
+    return null;
+  }
+}
 async function createResearchIntakeFinalApprovalPrompt(){
   const packageId=_researchIntakeCurrentPackage;
   if(!packageId){_researchIntakeSetResult('먼저 최종 실행 decision report를 생성하세요.', true);return null;}
@@ -1529,5 +1558,6 @@ window.createResearchIntakeOpenCrabLiveExecutionGate=createResearchIntakeOpenCra
 window.checkResearchIntakeOpenCrabLiveRunnerHealth=checkResearchIntakeOpenCrabLiveRunnerHealth;
 window.runResearchIntakeOpenCrabLiveRunner=runResearchIntakeOpenCrabLiveRunner;
 window.createResearchIntakeNeo4jWriteApprovalGate=createResearchIntakeNeo4jWriteApprovalGate;
+window.runResearchIntakeNeo4jWriteRunnerStub=runResearchIntakeNeo4jWriteRunnerStub;
 window.createResearchIntakeFinalApprovalPrompt=createResearchIntakeFinalApprovalPrompt;
 window.createResearchIntakeExecutionPlan=createResearchIntakeExecutionPlan;

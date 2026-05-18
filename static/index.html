@@ -235,6 +235,7 @@
         <label class="setup-pack-help" style="display:block;margin-top:6px"><input id="researchIntakeOpenCrabLiveRunnerRetry" type="checkbox" disabled> retry=true로 이전 failure artifact 이후 명시 재시도</label>
         <button id="researchIntakeOpenCrabLiveRunner" class="cron-btn" style="width:100%;padding:6px 8px;margin-top:6px" onclick="runResearchIntakeOpenCrabLiveRunner()" disabled title="feature flag와 최종 승인 문구가 맞을 때만 Paperclip OpenCrab live runner를 호출합니다">OpenCrab live runner 실행</button>
         <button id="researchIntakeNeo4jWriteApprovalGate" class="cron-btn" style="width:100%;padding:6px 8px;margin-top:6px" onclick="createResearchIntakeNeo4jWriteApprovalGate()" disabled title="OpenCrab success verification 이후 Neo4j write 승인 gate만 생성합니다. 실제 Neo4j write는 하지 않습니다">Neo4j write 승인 gate</button>
+        <button id="researchIntakeNeo4jWriteRunnerStub" class="cron-btn" style="width:100%;padding:6px 8px;margin-top:6px" onclick="runResearchIntakeNeo4jWriteRunnerStub()" disabled title="Neo4j write runner request/response schema만 고정합니다. 실제 Neo4j write는 하지 않습니다">Neo4j write runner stub</button>
         <div id="researchIntakeResult" class="setup-pack-help">OpenCrab sync / Neo4j write / Paperclip reflection 없이 review package만 생성합니다.</div>
         <div id="researchIntakeReviewPanel" class="research-intake-review"><div class="setup-pack-help">생성 후 visual evidence review가 여기에 표시됩니다.</div></div>
       </div>

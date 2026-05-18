@@ -1675,3 +1675,8 @@ After a connector reports `opencrab_sync_completed`, the live runner writes `pro
 ### Research Intake Neo4j write approval gate
 
 `POST /api/research-intake/neo4j-write-approval-gate` requires `promotion/opencrab_live_runner_success_verification.json` with `opencrab_live_runner_success_verified`, all verification checks true, exact `approval_phrase=APPROVE_NEO4J_WRITE_AFTER_OPENCRAB_SYNC`, and optional matching `expected_payload_sha256`. It writes `promotion/neo4j_write_approval_gate.json/md` and still performs no Neo4j write or Paperclip reflection. The next mutation remains a separate runner gated by `EXECUTE_NEO4J_WRITE_AFTER_OPENCRAB_SYNC`.
+
+
+### Research Intake Neo4j write runner stub
+
+`POST /api/research-intake/neo4j-write-runner-stub` requires `promotion/neo4j_write_approval_gate.json`, exact `approval_phrase=EXECUTE_NEO4J_WRITE_AFTER_OPENCRAB_SYNC`, and optional matching `expected_payload_sha256`. It writes `promotion/neo4j_write_runner_stub_result.json/md` with fixed `neo4j.write_research_intake_from_opencrab` request schema and expected `research-intake-neo4j-write-runner/v1` response schema. This is still a stub: it performs no Neo4j write and no Paperclip reflection.
