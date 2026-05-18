@@ -509,6 +509,9 @@ def handle_post(handler, parsed) -> bool:
     if parsed.path == '/api/research-intake/neo4j-write-execution-gate':
         return _handle_research_intake_neo4j_write_execution_gate(handler, body)
 
+    if parsed.path == '/api/research-intake/neo4j-write-live-runner':
+        return _handle_research_intake_neo4j_write_live_runner(handler, body)
+
     # ── Workspace management (POST) ──
     if parsed.path == '/api/workspaces/add':
         return _handle_workspace_add(handler, body)
@@ -1721,6 +1724,117 @@ def _handle_research_intake_neo4j_write_execution_gate(handler, body):
             'next_approval_required': gate['next_approval_required'],
             'external_mutations': post_opencrab_mutations,
         }, status=200 if flag_enabled else 423)
+    except FileNotFoundError as e:
+        return bad(handler, str(e), 404)
+    except (ValueError, PermissionError, OSError, json.JSONDecodeError) as e:
+        return bad(handler, str(e), 400)
+    except Exception as e:
+        return bad(handler, str(e), 500)
+
+
+def _invoke_neo4j_write_live_runner(request):
+    runner_url = (os.environ.get('HERMES_NEO4J_LIVE_RUNNER_URL') or '').strip()
+    if not runner_url:
+        raise RuntimeError('HERMES_NEO4J_LIVE_RUNNER_URL is not configured')
+    req = urllib.request.Request(
+        runner_url,
+        data=json.dumps(request).encode('utf-8'),
+        headers={'Content-Type': 'application/json'},
+        method='POST',
+    )
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        payload = json.loads(resp.read().decode('utf-8') or '{}')
+    return payload if isinstance(payload, dict) else {'raw_result': payload}
+
+
+def _handle_research_intake_neo4j_write_live_runner(handler, body):
+    before_mutation = {'opencrab_sync': True, 'neo4j_write': False, 'paperclip_reflection': False}
+    after_mutation = {'opencrab_sync': True, 'neo4j_write': True, 'paperclip_reflection': False}
+    feature_flag = 'HERMES_NEO4J_ENABLE_LIVE_WRITE'
+    flag_enabled = str(os.environ.get(feature_flag) or '').lower() in ('1', 'true', 'yes', 'on')
+    try:
+        package_dir = _safe_research_intake_package_dir(str(body.get('package_id') or body.get('package_dir') or ''))
+        promotion_dir = package_dir / 'promotion'
+        gate_path = promotion_dir / 'neo4j_write_execution_gate.json'
+        if not gate_path.exists():
+            return j(handler, {'ok': False, 'status': 'neo4j_write_live_runner_blocked', 'error': 'neo4j_write_execution_gate.json is required before Neo4j write live runner', 'external_mutations': before_mutation}, status=409)
+        gate = json.loads(gate_path.read_text(encoding='utf-8'))
+        if gate.get('status') != 'neo4j_write_execution_gate_ready':
+            return j(handler, {'ok': False, 'status': 'neo4j_write_live_runner_blocked', 'error': 'Neo4j write execution gate must be ready before live runner', 'gate_status': gate.get('status'), 'external_mutations': before_mutation}, status=409)
+        if not flag_enabled:
+            return j(handler, {'ok': False, 'status': 'neo4j_write_live_runner_locked', 'feature_flag': feature_flag, 'feature_flag_enabled': False, 'external_mutations': before_mutation}, status=423)
+        required_phrase = 'EXECUTE_NEO4J_WRITE_LIVE_RUNNER'
+        if str(body.get('approval_phrase') or '').strip() != required_phrase:
+            return j(handler, {'ok': False, 'status': 'neo4j_write_live_runner_blocked', 'error': f'approval phrase must be {required_phrase}', 'external_mutations': before_mutation}, status=403)
+        payload_sha = str(gate.get('payload_sha256') or '').strip()
+        expected_sha = str(body.get('expected_payload_sha256') or '').strip()
+        if expected_sha and expected_sha != payload_sha:
+            return j(handler, {'ok': False, 'status': 'neo4j_write_live_runner_blocked', 'error': 'payload checksum mismatch', 'expected_payload_sha256': expected_sha, 'payload_sha256': payload_sha, 'external_mutations': before_mutation}, status=409)
+        failure_path = promotion_dir / 'neo4j_write_live_runner_failure.json'
+        if failure_path.exists() and not bool(body.get('retry')):
+            return j(handler, {'ok': False, 'status': 'neo4j_write_live_runner_retry_required', 'error': 'previous failure artifact exists; pass retry=true to retry the same approved payload', 'failure_path': str(failure_path), 'external_mutations': before_mutation}, status=409)
+        request = dict(gate.get('would_request') or {})
+        request['operator'] = str(body.get('operator') or request.get('operator') or 'webui-user')
+        try:
+            runner_result = _invoke_neo4j_write_live_runner(request)
+        except Exception as exc:
+            failure = {
+                'package_id': gate.get('package_id') or package_dir.name,
+                'status': 'neo4j_write_live_runner_failed',
+                'created_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+                'failure_type': 'connector_error',
+                'error': str(exc),
+                'request': _redact_live_runner_payload(request),
+                'payload_sha256': payload_sha,
+                'retry_required': True,
+                'external_mutations': before_mutation,
+                'external_mutations_performed': ['opencrab_sync'],
+            }
+            failure_path.write_text(json.dumps(failure, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+            (promotion_dir / 'neo4j_write_live_runner_failure.md').write_text('\n'.join(['# Neo4j Write Live Runner Failure', '', f"Status: {failure['status']}", f"Failure type: {failure['failure_type']}", '- Neo4j write: not confirmed', '- Paperclip reflection: not executed']) + '\n', encoding='utf-8')
+            return j(handler, {'ok': False, 'status': failure['status'], 'failure_artifact': True, 'retry_required': True, 'failure_path': str(failure_path), 'external_mutations': before_mutation}, status=502)
+        result = {
+            'package_id': gate.get('package_id') or package_dir.name,
+            'status': str(runner_result.get('status') or ''),
+            'created_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+            'payload_sha256': payload_sha,
+            'request': _redact_live_runner_payload(request),
+            'runner_result': _redact_live_runner_payload(runner_result),
+            'neo4j_result_id': runner_result.get('neo4j_result_id'),
+            'written_counts': runner_result.get('written_counts') or {},
+            'external_mutations': after_mutation,
+            'external_mutations_performed': ['opencrab_sync', 'neo4j_write'],
+            'guards': {'paperclip_reflection_executed': False, 'paperclip_reflection_requires_separate_approval': True},
+        }
+        result_path = promotion_dir / 'neo4j_write_live_runner_result.json'
+        result_path.write_text(json.dumps(result, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+        (promotion_dir / 'neo4j_write_live_runner_result.md').write_text('\n'.join(['# Neo4j Write Live Runner Result', '', f"Status: {result['status']}", f"Payload SHA-256: {payload_sha}", f"Neo4j result id: {result.get('neo4j_result_id') or ''}", '', '## Guard', '- Paperclip reflection: not executed']) + '\n', encoding='utf-8')
+        expected_counts = request.get('counts') or {}
+        checks = {
+            'status_completed': result['status'] == 'neo4j_write_completed',
+            'payload_sha256_match': str(runner_result.get('payload_sha256') or '') == payload_sha,
+            'written_counts_match_request': (runner_result.get('written_counts') or {}) == expected_counts,
+            'neo4j_result_id_present': bool(runner_result.get('neo4j_result_id')),
+        }
+        verification = {
+            'package_id': result['package_id'],
+            'status': 'neo4j_write_success_verified' if all(checks.values()) else 'neo4j_write_success_verification_failed',
+            'created_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+            'payload_sha256': payload_sha,
+            'neo4j_result_id': runner_result.get('neo4j_result_id'),
+            'request_counts': expected_counts,
+            'written_counts': runner_result.get('written_counts') or {},
+            'checks': checks,
+            'external_mutations': after_mutation,
+            'external_mutations_performed': ['opencrab_sync', 'neo4j_write'],
+            'paperclip_reflection': False,
+        }
+        verification_path = promotion_dir / 'neo4j_write_success_verification.json'
+        verification_path.write_text(json.dumps(verification, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+        (promotion_dir / 'neo4j_write_success_verification.md').write_text('\n'.join(['# Neo4j Write Success Verification', '', f"Status: {verification['status']}", f"Payload SHA-256: {payload_sha}", f"Neo4j result id: {verification.get('neo4j_result_id') or ''}", '', '## Guard', '- Paperclip reflection: not executed']) + '\n', encoding='utf-8')
+        if verification['status'] != 'neo4j_write_success_verified':
+            return j(handler, {'ok': False, 'status': verification['status'], 'result_path': str(result_path), 'success_verification': verification, 'external_mutations': after_mutation}, status=502)
+        return j(handler, {'ok': True, 'package_id': result['package_id'], 'status': result['status'], 'payload_sha256': payload_sha, 'neo4j_result_id': result.get('neo4j_result_id'), 'result_path': str(result_path), 'success_verification': verification, 'external_mutations': after_mutation})
     except FileNotFoundError as e:
         return bad(handler, str(e), 404)
     except (ValueError, PermissionError, OSError, json.JSONDecodeError) as e:

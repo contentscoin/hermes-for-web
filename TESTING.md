@@ -1830,3 +1830,8 @@ Neo4j write runner stub tests seed `neo4j_write_approval_gate.json`, verify miss
 ### Research Intake Neo4j write live execution gate tests
 
 Neo4j write execution gate tests seed `neo4j_write_runner_stub_result.json`, verify missing stub blocks with HTTP 409, wrong phrase returns HTTP 403, feature flag off returns HTTP 423 Locked, and feature flag on writes `neo4j_write_execution_gate.json/md` while keeping `neo4j_write=false` and `paperclip_reflection=false`.
+
+
+### Research Intake Neo4j write live runner tests
+
+Neo4j write live runner tests cover missing execution gate, default no-runner failure artifact creation, retry guard blocking, monkeypatched success result creation, and success verification checks for status, payload checksum, written counts, and `neo4j_result_id`. Browser smoke should verify the live runner button/function and no Paperclip reflection messaging.

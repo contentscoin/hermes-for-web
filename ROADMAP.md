@@ -434,3 +434,8 @@ After the Neo4j write approval gate, the WebUI can now create a Neo4j write runn
 ### Completed: Neo4j write live execution gate
 
 After the Neo4j write runner stub, the WebUI can now create a locked live execution gate. The gate verifies the final approval phrase, checksum, and `HERMES_NEO4J_ENABLE_LIVE_WRITE`, but still does not execute a graph write.
+
+
+### Completed: Neo4j write live runner invocation
+
+The WebUI can now invoke a separately approved Neo4j write runner behind `HERMES_NEO4J_ENABLE_LIVE_WRITE` and `EXECUTE_NEO4J_WRITE_LIVE_RUNNER`. Failures leave retry-guarded artifacts; successes create a result plus success verification artifact. Paperclip reflection remains a later, separately approved stage.
