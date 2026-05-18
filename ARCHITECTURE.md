@@ -1640,3 +1640,8 @@ The Research Intake WebUI now separates human review approval from execution. `P
 ### Research Intake Paperclip OpenCrab live runner stub
 
 `POST /api/research-intake/run-opencrab-live-stub` fixes the real connector boundary without performing the connector call. It requires `opencrab_live_runner_preflight.json`, rechecks contract/approval/preflight checksums, accepts only `connector=paperclip_opencrab_plugin` and `runner_mode=stub`, writes `promotion/opencrab_live_runner_stub_result.json` plus `.md`, and records the intended request schema (`paperclip.opencrab.sync_research_intake`) and expected response schema. All mutation flags remain false.
+
+
+### Research Intake Paperclip OpenCrab live final approval prompt
+
+`POST /api/research-intake/opencrab-live-final-approval-prompt` is the final read-only approval artifact before any real Paperclip/OpenCrab live connector call. It requires the live runner stub result, rechecks contract/approval/preflight/stub payload checksums, records the exact approval phrase `EXECUTE_PAPERCLIP_OPENCRAB_LIVE_SYNC`, and writes `promotion/opencrab_live_runner_final_approval_prompt.json` plus `.md`. The artifact states the next approved runner may perform OpenCrab sync only; Neo4j write and Paperclip reflection remain disabled. This endpoint performs no mutation.

@@ -1088,6 +1088,8 @@ function _researchIntakeSetApprovalEnabled(enabled){
   if(preflightBtn) preflightBtn.disabled=!enabled;
   const liveStubBtn=$('researchIntakeRunOpenCrabLiveStub');
   if(liveStubBtn) liveStubBtn.disabled=!enabled;
+  const finalLivePromptBtn=$('researchIntakeOpenCrabLiveFinalApprovalPrompt');
+  if(finalLivePromptBtn) finalLivePromptBtn.disabled=!enabled;
 }
 function _researchIntakeRenderReview(data){
   const panel=$('researchIntakeReviewPanel');
@@ -1216,6 +1218,32 @@ async function createResearchIntakeOpenCrabExecutionRequest(executeLive=false){
     return data;
   }catch(e){
     _researchIntakeSetResult('OpenCrab 실행 준비 실패: '+(e.message||e), true);
+    return null;
+  }
+}
+async function createResearchIntakeOpenCrabLiveFinalApprovalPrompt(){
+  const packageId=_researchIntakeCurrentPackage;
+  if(!packageId){_researchIntakeSetResult('먼저 Paperclip OpenCrab live runner stub를 완료하세요.', true);return null;}
+  _researchIntakeSetResult('OpenCrab live 최종 승인 prompt 생성 중... 실제 sync는 하지 않습니다.', false);
+  try{
+    const res=await fetch(new URL('/api/research-intake/opencrab-live-final-approval-prompt',location.origin).href,{
+      method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+        package_id:packageId,
+        connector:'paperclip_opencrab_plugin',
+        requester:'webui-user'
+      })
+    });
+    const data=await res.json();
+    if(!res.ok||!data.ok) throw new Error(data.error||'opencrab_live_final_approval_prompt failed');
+    const panel=$('researchIntakeReviewPanel');
+    if(panel){
+      const scope=data.mutation_scope||{};
+      panel.innerHTML=`<div class="research-intake-final-report"><strong>OpenCrab live 최종 승인 prompt</strong><div>${esc(data.status||'opencrab_live_final_approval_prompt_ready')} · approval required</div><pre>${esc(`Required phrase: EXECUTE_PAPERCLIP_OPENCRAB_LIVE_SYNC\nPayload SHA-256: ${data.payload_sha256||''}\nPrompt artifact: opencrab_live_runner_final_approval_prompt\n\nMutation scope if approved:\nOpenCrab sync: ${scope.opencrab_sync?'will execute in next live runner':'disabled'}\nNeo4j write: disabled\nPaperclip reflection: disabled\n\nCurrent step:\nOpenCrab sync: not executed\nNeo4j write: not executed\nPaperclip reflection: not executed`)}</pre></div>`;
+    }
+    _researchIntakeSetResult('OpenCrab live 최종 승인 prompt 준비 완료 · 실제 sync 없음', false);
+    return data;
+  }catch(e){
+    _researchIntakeSetResult('OpenCrab live 최종 승인 prompt 실패: '+(e.message||e), true);
     return null;
   }
 }
@@ -1383,5 +1411,6 @@ window.runResearchIntakeOpenCrabConnector=runResearchIntakeOpenCrabConnector;
 window.approveResearchIntakeOpenCrabRunner=approveResearchIntakeOpenCrabRunner;
 window.preflightResearchIntakeOpenCrabRunner=preflightResearchIntakeOpenCrabRunner;
 window.runResearchIntakeOpenCrabLiveStub=runResearchIntakeOpenCrabLiveStub;
+window.createResearchIntakeOpenCrabLiveFinalApprovalPrompt=createResearchIntakeOpenCrabLiveFinalApprovalPrompt;
 window.createResearchIntakeFinalApprovalPrompt=createResearchIntakeFinalApprovalPrompt;
 window.createResearchIntakeExecutionPlan=createResearchIntakeExecutionPlan;

@@ -1785,3 +1785,8 @@ The live runner preflight tests create a live sync contract and runner approval 
 ### Research Intake live runner stub tests
 
 The live runner stub tests prepare a full contract → approval → preflight chain, call `/api/research-intake/run-opencrab-live-stub`, and assert the fixed request/response schema plus false mutation flags. Missing preflight must fail with HTTP 409 and must not create an executable result.
+
+
+### Research Intake live final approval prompt tests
+
+The final approval prompt tests prepare the full contract → approval → preflight → live-stub chain, call `/api/research-intake/opencrab-live-final-approval-prompt`, and assert the exact approval phrase, mutation scope, payload checksum, and false current-step mutation flags. Missing stub must fail with HTTP 409.

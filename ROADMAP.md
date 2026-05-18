@@ -389,3 +389,8 @@ A preflight verifier now rechecks approval, payload checksum, connector allowlis
 ### Completed: Paperclip OpenCrab live runner stub
 
 A live runner stub now fixes the exact Paperclip/OpenCrab connector boundary and result artifact shape without network mutation. The next step is the real Paperclip OpenCrab runner, guarded by the stub/preflight artifacts and a final explicit live execution approval.
+
+
+### Completed: Paperclip OpenCrab live final approval prompt
+
+The live sync path now has a final approval prompt artifact after the live runner stub. It records the exact phrase `EXECUTE_PAPERCLIP_OPENCRAB_LIVE_SYNC`, payload checksum, connector, source counts, and mutation scope. The next step is the actual Paperclip OpenCrab live runner endpoint, gated by this final prompt and explicit user phrase.

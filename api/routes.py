@@ -488,6 +488,9 @@ def handle_post(handler, parsed) -> bool:
     if parsed.path == '/api/research-intake/run-opencrab-live-stub':
         return _handle_research_intake_run_opencrab_live_stub(handler, body)
 
+    if parsed.path == '/api/research-intake/opencrab-live-final-approval-prompt':
+        return _handle_research_intake_opencrab_live_final_approval_prompt(handler, body)
+
     # ── Workspace management (POST) ──
     if parsed.path == '/api/workspaces/add':
         return _handle_workspace_add(handler, body)
@@ -1326,6 +1329,112 @@ def _research_intake_execution_report_payload(package_dir: Path) -> dict | None:
         'requires_final_tool_execution': bool(plan.get('requires_final_tool_execution', True)),
         'external_mutations': external_mutations,
     }
+
+
+def _handle_research_intake_opencrab_live_final_approval_prompt(handler, body):
+    external_mutations = {
+        'opencrab_sync': False,
+        'neo4j_write': False,
+        'paperclip_reflection': False,
+    }
+    approval_phrase = 'EXECUTE_PAPERCLIP_OPENCRAB_LIVE_SYNC'
+    try:
+        package_dir = _safe_research_intake_package_dir(str(body.get('package_id') or body.get('package_dir') or ''))
+        promotion_dir = package_dir / 'promotion'
+        contract_path = promotion_dir / 'opencrab_live_sync_contract.json'
+        approval_path = promotion_dir / 'opencrab_runner_approval.json'
+        preflight_path = promotion_dir / 'opencrab_live_runner_preflight.json'
+        stub_path = promotion_dir / 'opencrab_live_runner_stub_result.json'
+        if not stub_path.exists():
+            return j(handler, {'error': 'opencrab_live_runner_stub_result.json is required before final live approval prompt', 'external_mutations': external_mutations}, status=409)
+        missing = [str(p.name) for p in (contract_path, approval_path, preflight_path) if not p.exists()]
+        if missing:
+            return j(handler, {'error': 'missing prerequisite artifacts: ' + ', '.join(missing), 'external_mutations': external_mutations}, status=409)
+        contract = json.loads(contract_path.read_text(encoding='utf-8'))
+        approval = json.loads(approval_path.read_text(encoding='utf-8'))
+        preflight = json.loads(preflight_path.read_text(encoding='utf-8'))
+        stub = json.loads(stub_path.read_text(encoding='utf-8'))
+        connector = str(body.get('connector') or stub.get('connector') or preflight.get('connector') or approval.get('connector') or contract.get('connector') or '').strip()
+        if connector != 'paperclip_opencrab_plugin':
+            return j(handler, {'error': f'unsupported final approval connector: {connector}', 'external_mutations': external_mutations}, status=400)
+        if stub.get('status') != 'opencrab_live_runner_stub_ready':
+            return j(handler, {'error': 'live runner stub result is not ready', 'external_mutations': external_mutations}, status=409)
+        if not preflight.get('ready_for_live_runner'):
+            return j(handler, {'error': 'live runner preflight is not ready', 'external_mutations': external_mutations}, status=409)
+        payload = contract.get('payload') or {}
+        payload_sha256 = _research_intake_payload_sha256(payload)
+        expected = str(body.get('expected_payload_sha256') or stub.get('payload_sha256') or preflight.get('payload_sha256') or '').strip()
+        checksums = [expected, str(stub.get('payload_sha256') or ''), str(preflight.get('payload_sha256') or ''), str(approval.get('payload_sha256') or '')]
+        if any(value != payload_sha256 for value in checksums):
+            return j(handler, {'error': 'payload checksum mismatch before final live approval prompt', 'external_mutations': external_mutations}, status=409)
+        request_schema = stub.get('request_schema') or {}
+        response_schema = stub.get('response_schema') or {}
+        if request_schema.get('tool') != 'paperclip.opencrab.sync_research_intake':
+            return j(handler, {'error': 'stub request schema tool mismatch', 'external_mutations': external_mutations}, status=409)
+        mutation_scope = {'opencrab_sync': True, 'neo4j_write': False, 'paperclip_reflection': False}
+        prompt = {
+            'package_id': contract.get('package_id') or package_dir.name,
+            'status': 'opencrab_live_final_approval_prompt_ready',
+            'created_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+            'connector': connector,
+            'approval_phrase': approval_phrase,
+            'requires_explicit_user_approval': True,
+            'payload_sha256': payload_sha256,
+            'source_counts': payload.get('counts') or {},
+            'mutation_scope': mutation_scope,
+            'request_schema': request_schema,
+            'response_schema': response_schema,
+            'stub_result_path': str(stub_path),
+            'preflight_path': str(preflight_path),
+            'warning': 'Do not execute the real connector unless the user explicitly provides the approval phrase for this exact payload checksum.',
+            'external_mutations': external_mutations,
+        }
+        from api.opencrab_connector import redact_opencrab_endpoint
+        safe_prompt = redact_opencrab_endpoint(prompt)
+        json_path = promotion_dir / 'opencrab_live_runner_final_approval_prompt.json'
+        md_path = promotion_dir / 'opencrab_live_runner_final_approval_prompt.md'
+        json_path.write_text(json.dumps(safe_prompt, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+        md_path.write_text('\n'.join([
+            '# Paperclip OpenCrab Live Sync Final Approval Prompt',
+            '',
+            f"Package: {safe_prompt['package_id']}",
+            f"Connector: {connector}",
+            f"Payload SHA-256: {payload_sha256}",
+            '',
+            '## Required approval phrase',
+            f'`{approval_phrase}`',
+            '',
+            '## Mutation scope if the next live runner is approved',
+            '- OpenCrab sync: will be executed by the next live runner only after explicit approval',
+            '- Neo4j write: disabled',
+            '- Paperclip reflection: disabled',
+            '',
+            '## Current step mutation status',
+            '- OpenCrab sync: not executed',
+            '- Neo4j write: not executed',
+            '- Paperclip reflection: not executed',
+        ]) + '\n', encoding='utf-8')
+        return j(handler, {
+            'ok': True,
+            'package_id': safe_prompt['package_id'],
+            'package_dir': str(package_dir),
+            'status': safe_prompt['status'],
+            'connector': connector,
+            'approval_phrase': approval_phrase,
+            'payload_sha256': payload_sha256,
+            'source_counts': safe_prompt['source_counts'],
+            'mutation_scope': mutation_scope,
+            'prompt_path': str(json_path),
+            'report_path': str(md_path),
+            'external_mutations': external_mutations,
+            'requires_explicit_user_approval': True,
+        })
+    except FileNotFoundError as e:
+        return j(handler, {'error': str(e), 'external_mutations': external_mutations}, status=404)
+    except (ValueError, PermissionError, OSError, json.JSONDecodeError, TypeError) as e:
+        return j(handler, {'error': str(e), 'external_mutations': external_mutations}, status=400)
+    except Exception as e:
+        return j(handler, {'error': str(e), 'external_mutations': external_mutations}, status=500)
 
 
 def _handle_research_intake_run_opencrab_live_stub(handler, body):

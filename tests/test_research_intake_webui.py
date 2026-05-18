@@ -23,6 +23,7 @@ def test_research_intake_routes_are_registered():
     assert "/api/research-intake/approve-opencrab-runner" in routes
     assert "/api/research-intake/preflight-opencrab-runner" in routes
     assert "/api/research-intake/run-opencrab-live-stub" in routes
+    assert "/api/research-intake/opencrab-live-final-approval-prompt" in routes
     assert "_handle_research_intake_image_draft" in routes
     assert "_handle_research_intake_review" in routes
 
@@ -871,3 +872,76 @@ def test_research_intake_paperclip_opencrab_live_runner_stub_ui_controls_exist()
     assert "function runResearchIntakeOpenCrabLiveStub" in boot
     assert "/api/research-intake/run-opencrab-live-stub" in boot
     assert "opencrab_live_runner_stub_result" in boot
+
+
+def _prepare_live_stub_for_final_approval(routes, package_dir):
+    preflight = _prepare_preflight_for_live_stub(routes, package_dir)
+    handler = DummyHandler()
+    routes._handle_research_intake_run_opencrab_live_stub(handler, {
+        "package_id": "research-intake-test-package",
+        "connector": "paperclip_opencrab_plugin",
+        "runner_mode": "stub",
+        "expected_payload_sha256": preflight["payload_sha256"],
+        "operator": "test-user",
+    })
+    assert handler.status == 200
+    return handler.json_payload()
+
+
+def test_research_intake_paperclip_opencrab_live_final_approval_prompt_requires_stub_and_records_phrase_without_mutation(tmp_path, monkeypatch):
+    import api.routes as routes
+
+    package_dir = _prepare_opencrab_execution_package(tmp_path)
+    _write_live_contract_for_runner_gate(package_dir)
+    monkeypatch.setattr(routes, "STATE_DIR", tmp_path)
+    stub = _prepare_live_stub_for_final_approval(routes, package_dir)
+    handler = DummyHandler()
+    routes._handle_research_intake_opencrab_live_final_approval_prompt(handler, {
+        "package_id": "research-intake-test-package",
+        "connector": "paperclip_opencrab_plugin",
+        "expected_payload_sha256": stub["payload_sha256"],
+        "requester": "test-user",
+    })
+
+    payload = handler.json_payload()
+    assert handler.status == 200
+    assert payload["ok"] is True
+    assert payload["status"] == "opencrab_live_final_approval_prompt_ready"
+    assert payload["approval_phrase"] == "EXECUTE_PAPERCLIP_OPENCRAB_LIVE_SYNC"
+    assert payload["connector"] == "paperclip_opencrab_plugin"
+    assert payload["payload_sha256"] == stub["payload_sha256"]
+    assert payload["mutation_scope"] == {"opencrab_sync": True, "neo4j_write": False, "paperclip_reflection": False}
+    assert payload["external_mutations"] == {"opencrab_sync": False, "neo4j_write": False, "paperclip_reflection": False}
+    prompt = json.loads((package_dir / "promotion" / "opencrab_live_runner_final_approval_prompt.json").read_text(encoding="utf-8"))
+    assert prompt["approval_phrase"] == "EXECUTE_PAPERCLIP_OPENCRAB_LIVE_SYNC"
+    assert prompt["stub_result_path"].endswith("opencrab_live_runner_stub_result.json")
+    assert prompt["requires_explicit_user_approval"] is True
+    assert "mcp.opencrab.com" not in json.dumps(prompt)
+
+
+def test_research_intake_paperclip_opencrab_live_final_approval_prompt_rejects_missing_stub(tmp_path, monkeypatch):
+    import api.routes as routes
+
+    package_dir = _prepare_opencrab_execution_package(tmp_path)
+    _write_live_contract_for_runner_gate(package_dir)
+    monkeypatch.setattr(routes, "STATE_DIR", tmp_path)
+    _prepare_preflight_for_live_stub(routes, package_dir)
+    handler = DummyHandler()
+    routes._handle_research_intake_opencrab_live_final_approval_prompt(handler, {
+        "package_id": "research-intake-test-package",
+        "connector": "paperclip_opencrab_plugin",
+    })
+
+    payload = handler.json_payload()
+    assert handler.status == 409
+    assert "stub" in payload["error"]
+    assert payload["external_mutations"] == {"opencrab_sync": False, "neo4j_write": False, "paperclip_reflection": False}
+
+
+def test_research_intake_paperclip_opencrab_live_final_approval_prompt_ui_controls_exist():
+    html = read("static/index.html")
+    boot = read("static/boot.js")
+    assert "researchIntakeOpenCrabLiveFinalApprovalPrompt" in html
+    assert "function createResearchIntakeOpenCrabLiveFinalApprovalPrompt" in boot
+    assert "/api/research-intake/opencrab-live-final-approval-prompt" in boot
+    assert "EXECUTE_PAPERCLIP_OPENCRAB_LIVE_SYNC" in boot
