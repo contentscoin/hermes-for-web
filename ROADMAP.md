@@ -404,3 +404,8 @@ The live sync path now has an execution gate that verifies the final user phrase
 ### Completed: Paperclip OpenCrab live runner invocation
 
 The OpenCrab path now includes a live runner endpoint behind the execution gate and `HERMES_OPENCRAB_ENABLE_LIVE_RUNNER`. It constructs the approved request from the gate artifact, invokes a separated Paperclip/OpenCrab runner helper, stores a result artifact, and still keeps Neo4j write and Paperclip reflection disabled.
+
+
+### Completed: OpenCrab live runner bridge health check
+
+The live runner now has a pre-execution bridge health endpoint and WebUI button. Operators can verify feature flag, runner URL presence, bridge reachability, and request schema compatibility before attempting a live OpenCrab sync.

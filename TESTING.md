@@ -1800,3 +1800,8 @@ The live execution gate tests prepare the full contract → approval → preflig
 ### Research Intake live runner invocation tests
 
 The live runner tests prepare the full gate chain, set `HERMES_OPENCRAB_ENABLE_LIVE_RUNNER=true`, monkeypatch `_invoke_paperclip_opencrab_live_runner`, and assert the endpoint writes `opencrab_live_runner_result.json/md` with `external_mutations.opencrab_sync=true` while Neo4j write and Paperclip reflection stay false. The feature-flag-off test confirms HTTP 423 Locked and no mutation flags.
+
+
+### Research Intake live runner bridge health tests
+
+Bridge health tests cover the unconfigured URL path, schema-valid probe path with URL redaction, and WebUI control wiring. The probe is monkeypatched in tests; no live network mutation occurs, and all mutation flags remain false.

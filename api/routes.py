@@ -497,6 +497,9 @@ def handle_post(handler, parsed) -> bool:
     if parsed.path == '/api/research-intake/opencrab-live-runner':
         return _handle_research_intake_opencrab_live_runner(handler, body)
 
+    if parsed.path == '/api/research-intake/opencrab-live-runner-health':
+        return _handle_research_intake_opencrab_live_runner_health(handler, body)
+
     # ── Workspace management (POST) ──
     if parsed.path == '/api/workspaces/add':
         return _handle_workspace_add(handler, body)
@@ -1335,6 +1338,74 @@ def _research_intake_execution_report_payload(package_dir: Path) -> dict | None:
         'requires_final_tool_execution': bool(plan.get('requires_final_tool_execution', True)),
         'external_mutations': external_mutations,
     }
+
+
+def _redact_live_runner_url(url):
+    return '[REDACTED]' if url else None
+
+
+def _redact_live_runner_payload(value):
+    if isinstance(value, str):
+        if 'key=' in value or value.startswith('http://') or value.startswith('https://'):
+            return '[REDACTED]'
+        return value
+    if isinstance(value, dict):
+        return {k: _redact_live_runner_payload(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_redact_live_runner_payload(v) for v in value]
+    return value
+
+
+def _probe_paperclip_opencrab_live_runner(runner_url):
+    health_url = runner_url.rstrip('/') + '/health'
+    with urllib.request.urlopen(health_url, timeout=5) as resp:
+        payload = json.loads(resp.read().decode('utf-8') or '{}')
+    return payload if isinstance(payload, dict) else {'raw_result': payload}
+
+
+def _handle_research_intake_opencrab_live_runner_health(handler, body):
+    external_mutations = {
+        'opencrab_sync': False,
+        'neo4j_write': False,
+        'paperclip_reflection': False,
+    }
+    feature_flag = 'HERMES_OPENCRAB_ENABLE_LIVE_RUNNER'
+    runner_url = (os.environ.get('HERMES_OPENCRAB_LIVE_RUNNER_URL') or '').strip()
+    flag_enabled = str(os.environ.get(feature_flag) or '').lower() in ('1', 'true', 'yes', 'on')
+    base = {
+        'ok': True,
+        'status': 'opencrab_live_runner_bridge_unconfigured',
+        'feature_flag': feature_flag,
+        'feature_flag_enabled': flag_enabled,
+        'runner_url_configured': bool(runner_url),
+        'runner_url': _redact_live_runner_url(runner_url),
+        'expected_tool': 'paperclip.opencrab.sync_research_intake',
+        'expected_version': 'research-intake-opencrab-live-runner/v1',
+        'schema_valid': False,
+        'external_mutations': external_mutations,
+    }
+    if not runner_url:
+        return j(handler, base)
+    try:
+        bridge_result = _probe_paperclip_opencrab_live_runner(runner_url)
+        from api.opencrab_connector import redact_opencrab_endpoint
+        bridge_result = _redact_live_runner_payload(redact_opencrab_endpoint(bridge_result if isinstance(bridge_result, dict) else {'raw_result': bridge_result}))
+        schema_valid = bridge_result.get('tool') == base['expected_tool'] and bridge_result.get('version') == base['expected_version']
+        payload = dict(base)
+        payload.update({
+            'status': 'opencrab_live_runner_bridge_ready' if schema_valid else 'opencrab_live_runner_bridge_schema_mismatch',
+            'bridge_result': bridge_result,
+            'schema_valid': schema_valid,
+        })
+        payload['runner_url'] = _redact_live_runner_url(runner_url)
+        return j(handler, payload)
+    except Exception as e:
+        payload = dict(base)
+        payload.update({
+            'status': 'opencrab_live_runner_bridge_unreachable',
+            'error': str(e),
+        })
+        return j(handler, payload)
 
 
 def _invoke_paperclip_opencrab_live_runner(request_payload):

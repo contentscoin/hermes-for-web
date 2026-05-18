@@ -1655,3 +1655,8 @@ The Research Intake WebUI now separates human review approval from execution. `P
 ### Research Intake Paperclip OpenCrab live runner invocation
 
 `POST /api/research-intake/opencrab-live-runner` is the first live invocation endpoint in the Research Intake OpenCrab chain. It requires `promotion/opencrab_live_runner_execution_gate.json`, exact phrase `EXECUTE_PAPERCLIP_OPENCRAB_LIVE_SYNC`, connector `paperclip_opencrab_plugin`, matching payload SHA-256, and `HERMES_OPENCRAB_ENABLE_LIVE_RUNNER=true`. The default invocation helper also requires `HERMES_OPENCRAB_LIVE_RUNNER_URL`; tests monkeypatch the helper so CI performs no network mutation. Successful calls write `promotion/opencrab_live_runner_result.json/md`, mark OpenCrab sync as executed, and keep Neo4j write plus Paperclip reflection disabled.
+
+
+### Research Intake OpenCrab live runner bridge health
+
+`POST /api/research-intake/opencrab-live-runner-health` checks live runner readiness without invoking sync. It reports `HERMES_OPENCRAB_ENABLE_LIVE_RUNNER`, whether `HERMES_OPENCRAB_LIVE_RUNNER_URL` is configured, probes the bridge `/health` endpoint when configured, validates the expected tool/version (`paperclip.opencrab.sync_research_intake`, `research-intake-opencrab-live-runner/v1`), redacts bridge URLs/secrets, and returns all mutation flags false.

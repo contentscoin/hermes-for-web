@@ -26,6 +26,7 @@ def test_research_intake_routes_are_registered():
     assert "/api/research-intake/opencrab-live-final-approval-prompt" in routes
     assert "/api/research-intake/opencrab-live-execution-gate" in routes
     assert "/api/research-intake/opencrab-live-runner" in routes
+    assert "/api/research-intake/opencrab-live-runner-health" in routes
     assert "_handle_research_intake_image_draft" in routes
     assert "_handle_research_intake_review" in routes
 
@@ -1108,3 +1109,60 @@ def test_research_intake_paperclip_opencrab_live_runner_ui_controls_exist():
     assert "function runResearchIntakeOpenCrabLiveRunner" in boot
     assert "/api/research-intake/opencrab-live-runner" in boot
     assert "opencrab_live_runner_result" in boot
+
+
+def test_research_intake_paperclip_opencrab_live_runner_health_reports_missing_url_without_mutation(monkeypatch):
+    import api.routes as routes
+
+    monkeypatch.setenv("HERMES_OPENCRAB_ENABLE_LIVE_RUNNER", "true")
+    monkeypatch.delenv("HERMES_OPENCRAB_LIVE_RUNNER_URL", raising=False)
+    handler = DummyHandler()
+    routes._handle_research_intake_opencrab_live_runner_health(handler, {"operator": "test-user"})
+
+    payload = handler.json_payload()
+    assert handler.status == 200
+    assert payload["ok"] is True
+    assert payload["status"] == "opencrab_live_runner_bridge_unconfigured"
+    assert payload["feature_flag_enabled"] is True
+    assert payload["runner_url_configured"] is False
+    assert payload["external_mutations"] == {"opencrab_sync": False, "neo4j_write": False, "paperclip_reflection": False}
+
+
+def test_research_intake_paperclip_opencrab_live_runner_health_redacts_bridge_url_and_validates_schema(monkeypatch):
+    import api.routes as routes
+
+    seen = []
+
+    def fake_probe(url):
+        seen.append(url)
+        return {
+            "status": "opencrab_live_runner_bridge_ready",
+            "tool": "paperclip.opencrab.sync_research_intake",
+            "version": "research-intake-opencrab-live-runner/v1",
+            "url": url,
+        }
+
+    monkeypatch.setenv("HERMES_OPENCRAB_ENABLE_LIVE_RUNNER", "true")
+    monkeypatch.setenv("HERMES_OPENCRAB_LIVE_RUNNER_URL", "https://runner.invalid/sse?key=secret-token")
+    monkeypatch.setattr(routes, "_probe_paperclip_opencrab_live_runner", fake_probe)
+    handler = DummyHandler()
+    routes._handle_research_intake_opencrab_live_runner_health(handler, {})
+
+    payload = handler.json_payload()
+    assert handler.status == 200
+    assert payload["status"] == "opencrab_live_runner_bridge_ready"
+    assert payload["runner_url_configured"] is True
+    assert payload["runner_url"] == "[REDACTED]"
+    assert payload["schema_valid"] is True
+    assert payload["bridge_result"]["tool"] == "paperclip.opencrab.sync_research_intake"
+    assert "secret-token" not in json.dumps(payload)
+    assert seen == ["https://runner.invalid/sse?key=secret-token"]
+
+
+def test_research_intake_paperclip_opencrab_live_runner_health_ui_controls_exist():
+    html = read("static/index.html")
+    boot = read("static/boot.js")
+    assert "researchIntakeOpenCrabLiveRunnerHealth" in html
+    assert "function checkResearchIntakeOpenCrabLiveRunnerHealth" in boot
+    assert "/api/research-intake/opencrab-live-runner-health" in boot
+    assert "opencrab_live_runner_bridge_ready" in boot

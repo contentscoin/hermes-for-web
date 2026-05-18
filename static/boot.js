@@ -1092,6 +1092,8 @@ function _researchIntakeSetApprovalEnabled(enabled){
   if(finalLivePromptBtn) finalLivePromptBtn.disabled=!enabled;
   const executionGateBtn=$('researchIntakeOpenCrabLiveExecutionGate');
   if(executionGateBtn) executionGateBtn.disabled=!enabled;
+  const liveRunnerHealthBtn=$('researchIntakeOpenCrabLiveRunnerHealth');
+  if(liveRunnerHealthBtn) liveRunnerHealthBtn.disabled=!enabled;
   const liveRunnerBtn=$('researchIntakeOpenCrabLiveRunner');
   if(liveRunnerBtn) liveRunnerBtn.disabled=!enabled;
 }
@@ -1386,6 +1388,26 @@ async function createResearchIntakeOpenCrabLiveExecutionGate(){
     return null;
   }
 }
+async function checkResearchIntakeOpenCrabLiveRunnerHealth(){
+  _researchIntakeSetResult('OpenCrab live runner bridge health 확인 중... 실제 sync는 하지 않습니다.', false);
+  try{
+    const res=await fetch(new URL('/api/research-intake/opencrab-live-runner-health',location.origin).href,{
+      method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({operator:'webui-user'})
+    });
+    const data=await res.json();
+    if(!res.ok||!data.ok) throw new Error(data.error||'opencrab_live_runner_health failed');
+    const panel=$('researchIntakeReviewPanel');
+    if(panel){
+      const bridge=data.bridge_result||{};
+      panel.innerHTML=`<div class="research-intake-final-report"><strong>OpenCrab live runner bridge health</strong><div>${esc(data.status||'opencrab_live_runner_bridge_unconfigured')} · schema valid: ${data.schema_valid?'true':'false'}</div><pre>${esc(`Feature flag: ${data.feature_flag||'HERMES_OPENCRAB_ENABLE_LIVE_RUNNER'}=${data.feature_flag_enabled?'true':'false'}\nRunner URL configured: ${data.runner_url_configured?'true':'false'}\nExpected tool: ${data.expected_tool||'paperclip.opencrab.sync_research_intake'}\nBridge tool: ${bridge.tool||''}\nBridge status: ${bridge.status||''}\n\nOpenCrab sync: not executed\nNeo4j write: not executed\nPaperclip reflection: not executed\n\nReady status: opencrab_live_runner_bridge_ready`)}</pre></div>`;
+    }
+    _researchIntakeSetResult(data.status==='opencrab_live_runner_bridge_ready'?'OpenCrab live runner bridge ready · 실제 sync 없음':'OpenCrab live runner bridge 점검 완료 · 실제 sync 없음', data.status!=='opencrab_live_runner_bridge_ready');
+    return data;
+  }catch(e){
+    _researchIntakeSetResult('OpenCrab live runner bridge health 실패: '+(e.message||e), true);
+    return null;
+  }
+}
 async function runResearchIntakeOpenCrabLiveRunner(){
   const packageId=_researchIntakeCurrentPackage;
   if(!packageId){_researchIntakeSetResult('먼저 OpenCrab live execution gate를 완료하세요.', true);return null;}
@@ -1471,6 +1493,7 @@ window.preflightResearchIntakeOpenCrabRunner=preflightResearchIntakeOpenCrabRunn
 window.runResearchIntakeOpenCrabLiveStub=runResearchIntakeOpenCrabLiveStub;
 window.createResearchIntakeOpenCrabLiveFinalApprovalPrompt=createResearchIntakeOpenCrabLiveFinalApprovalPrompt;
 window.createResearchIntakeOpenCrabLiveExecutionGate=createResearchIntakeOpenCrabLiveExecutionGate;
+window.checkResearchIntakeOpenCrabLiveRunnerHealth=checkResearchIntakeOpenCrabLiveRunnerHealth;
 window.runResearchIntakeOpenCrabLiveRunner=runResearchIntakeOpenCrabLiveRunner;
 window.createResearchIntakeFinalApprovalPrompt=createResearchIntakeFinalApprovalPrompt;
 window.createResearchIntakeExecutionPlan=createResearchIntakeExecutionPlan;
