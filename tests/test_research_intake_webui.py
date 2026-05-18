@@ -24,6 +24,7 @@ def test_research_intake_routes_are_registered():
     assert "/api/research-intake/preflight-opencrab-runner" in routes
     assert "/api/research-intake/run-opencrab-live-stub" in routes
     assert "/api/research-intake/opencrab-live-final-approval-prompt" in routes
+    assert "/api/research-intake/opencrab-live-execution-gate" in routes
     assert "_handle_research_intake_image_draft" in routes
     assert "_handle_research_intake_review" in routes
 
@@ -945,3 +946,77 @@ def test_research_intake_paperclip_opencrab_live_final_approval_prompt_ui_contro
     assert "function createResearchIntakeOpenCrabLiveFinalApprovalPrompt" in boot
     assert "/api/research-intake/opencrab-live-final-approval-prompt" in boot
     assert "EXECUTE_PAPERCLIP_OPENCRAB_LIVE_SYNC" in boot
+
+
+def _prepare_final_approval_for_execution_gate(routes, package_dir):
+    stub = _prepare_live_stub_for_final_approval(routes, package_dir)
+    handler = DummyHandler()
+    routes._handle_research_intake_opencrab_live_final_approval_prompt(handler, {
+        "package_id": "research-intake-test-package",
+        "connector": "paperclip_opencrab_plugin",
+        "expected_payload_sha256": stub["payload_sha256"],
+        "requester": "test-user",
+    })
+    assert handler.status == 200
+    return handler.json_payload()
+
+
+def test_research_intake_paperclip_opencrab_live_execution_gate_locks_when_feature_flag_off(tmp_path, monkeypatch):
+    import api.routes as routes
+
+    package_dir = _prepare_opencrab_execution_package(tmp_path)
+    _write_live_contract_for_runner_gate(package_dir)
+    monkeypatch.setattr(routes, "STATE_DIR", tmp_path)
+    monkeypatch.delenv("HERMES_OPENCRAB_ENABLE_LIVE_RUNNER", raising=False)
+    prompt = _prepare_final_approval_for_execution_gate(routes, package_dir)
+    handler = DummyHandler()
+    routes._handle_research_intake_opencrab_live_execution_gate(handler, {
+        "package_id": "research-intake-test-package",
+        "connector": "paperclip_opencrab_plugin",
+        "approval_phrase": "EXECUTE_PAPERCLIP_OPENCRAB_LIVE_SYNC",
+        "expected_payload_sha256": prompt["payload_sha256"],
+        "operator": "test-user",
+    })
+
+    payload = handler.json_payload()
+    assert handler.status == 423
+    assert payload["status"] == "opencrab_live_runner_locked"
+    assert payload["feature_flag"] == "HERMES_OPENCRAB_ENABLE_LIVE_RUNNER"
+    assert payload["would_request"]["tool"] == "paperclip.opencrab.sync_research_intake"
+    assert payload["payload_sha256"] == prompt["payload_sha256"]
+    assert payload["external_mutations"] == {"opencrab_sync": False, "neo4j_write": False, "paperclip_reflection": False}
+    gate = json.loads((package_dir / "promotion" / "opencrab_live_runner_execution_gate.json").read_text(encoding="utf-8"))
+    assert gate["locked"] is True
+    assert gate["feature_flag_enabled"] is False
+    assert gate["approval_phrase_verified"] is True
+    assert "mcp.opencrab.com" not in json.dumps(gate)
+
+
+def test_research_intake_paperclip_opencrab_live_execution_gate_rejects_wrong_phrase(tmp_path, monkeypatch):
+    import api.routes as routes
+
+    package_dir = _prepare_opencrab_execution_package(tmp_path)
+    _write_live_contract_for_runner_gate(package_dir)
+    monkeypatch.setattr(routes, "STATE_DIR", tmp_path)
+    prompt = _prepare_final_approval_for_execution_gate(routes, package_dir)
+    handler = DummyHandler()
+    routes._handle_research_intake_opencrab_live_execution_gate(handler, {
+        "package_id": "research-intake-test-package",
+        "connector": "paperclip_opencrab_plugin",
+        "approval_phrase": "WRONG",
+        "expected_payload_sha256": prompt["payload_sha256"],
+    })
+
+    payload = handler.json_payload()
+    assert handler.status == 403
+    assert "approval phrase" in payload["error"]
+    assert payload["external_mutations"] == {"opencrab_sync": False, "neo4j_write": False, "paperclip_reflection": False}
+
+
+def test_research_intake_paperclip_opencrab_live_execution_gate_ui_controls_exist():
+    html = read("static/index.html")
+    boot = read("static/boot.js")
+    assert "researchIntakeOpenCrabLiveExecutionGate" in html
+    assert "function createResearchIntakeOpenCrabLiveExecutionGate" in boot
+    assert "/api/research-intake/opencrab-live-execution-gate" in boot
+    assert "HERMES_OPENCRAB_ENABLE_LIVE_RUNNER" in boot

@@ -394,3 +394,8 @@ A live runner stub now fixes the exact Paperclip/OpenCrab connector boundary and
 ### Completed: Paperclip OpenCrab live final approval prompt
 
 The live sync path now has a final approval prompt artifact after the live runner stub. It records the exact phrase `EXECUTE_PAPERCLIP_OPENCRAB_LIVE_SYNC`, payload checksum, connector, source counts, and mutation scope. The next step is the actual Paperclip OpenCrab live runner endpoint, gated by this final prompt and explicit user phrase.
+
+
+### Completed: Paperclip OpenCrab live execution gate
+
+The live sync path now has an execution gate that verifies the final user phrase and exact payload checksum, constructs the intended connector request, and blocks with HTTP 423 unless `HERMES_OPENCRAB_ENABLE_LIVE_RUNNER` is enabled. The next step is the actual Paperclip OpenCrab connector invocation behind this gate.

@@ -1790,3 +1790,8 @@ The live runner stub tests prepare a full contract → approval → preflight ch
 ### Research Intake live final approval prompt tests
 
 The final approval prompt tests prepare the full contract → approval → preflight → live-stub chain, call `/api/research-intake/opencrab-live-final-approval-prompt`, and assert the exact approval phrase, mutation scope, payload checksum, and false current-step mutation flags. Missing stub must fail with HTTP 409.
+
+
+### Research Intake live execution gate tests
+
+The live execution gate tests prepare the full contract → approval → preflight → live-stub → final-prompt chain, call `/api/research-intake/opencrab-live-execution-gate`, and assert the feature-flag-off path returns HTTP 423 with a locked gate artifact. Wrong final approval phrases must fail with HTTP 403. Current-step mutation flags remain false in all cases.

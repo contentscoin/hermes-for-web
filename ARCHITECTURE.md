@@ -1645,3 +1645,8 @@ The Research Intake WebUI now separates human review approval from execution. `P
 ### Research Intake Paperclip OpenCrab live final approval prompt
 
 `POST /api/research-intake/opencrab-live-final-approval-prompt` is the final read-only approval artifact before any real Paperclip/OpenCrab live connector call. It requires the live runner stub result, rechecks contract/approval/preflight/stub payload checksums, records the exact approval phrase `EXECUTE_PAPERCLIP_OPENCRAB_LIVE_SYNC`, and writes `promotion/opencrab_live_runner_final_approval_prompt.json` plus `.md`. The artifact states the next approved runner may perform OpenCrab sync only; Neo4j write and Paperclip reflection remain disabled. This endpoint performs no mutation.
+
+
+### Research Intake Paperclip OpenCrab live execution gate
+
+`POST /api/research-intake/opencrab-live-execution-gate` validates the final approval phrase `EXECUTE_PAPERCLIP_OPENCRAB_LIVE_SYNC`, rechecks contract/approval/preflight/stub/final-prompt payload checksums, constructs the intended `paperclip.opencrab.sync_research_intake` request body, and writes `promotion/opencrab_live_runner_execution_gate.json` plus `.md`. If `HERMES_OPENCRAB_ENABLE_LIVE_RUNNER` is not enabled, the endpoint returns HTTP 423 Locked and performs no mutation. If enabled, it records readiness only; actual connector invocation remains a separate implementation step.
