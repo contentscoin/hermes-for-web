@@ -2346,6 +2346,22 @@ def test_research_intake_safety_ladder_progress_ui_controls_exist():
     assert "next_incomplete_step" in boot
 
 
+def test_research_intake_safety_ladder_progress_dashboard_ui_tokens_exist():
+    boot = read("static/boot.js")
+    css = read("static/style.css")
+    assert "function _researchIntakeRenderSafetyLadderDashboard" in boot
+    assert "research-intake-progress-dashboard" in boot
+    assert "research-intake-progress-stats" in boot
+    assert "research-intake-progress-critical" in boot
+    assert "research-intake-progress-grid" in boot
+    assert "progress tracker dashboard" in boot
+    assert ".research-intake-progress-dashboard" in css
+    assert ".research-intake-progress-stat" in css
+    assert ".research-intake-progress-step.complete" in css
+    assert ".research-intake-progress-step.missing" in css
+    assert ".research-intake-progress-step.present_needs_review" in css
+
+
 def test_research_intake_paperclip_opencrab_live_runner_health_reports_missing_url_without_mutation(monkeypatch):
     import api.routes as routes
 

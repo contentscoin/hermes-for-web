@@ -1720,3 +1720,7 @@ After a connector reports `opencrab_sync_completed`, the live runner writes `pro
 ### Research Intake safety ladder progress tracker
 
 `POST /api/research-intake/safety-ladder-progress` is a read-only operator dashboard endpoint. It enumerates the Research Intake safety ladder artifacts, reports each step as `complete`, `present_needs_review`, or `missing`, identifies the next incomplete critical step, and returns `safety_ladder_completed` only when the critical final verification/export artifacts are complete. It performs no OpenCrab sync, Neo4j write, or Paperclip reflection.
+
+### Research Intake safety ladder dashboard UI
+
+The OpenCrab panel renders `/api/research-intake/safety-ladder-progress` through `_researchIntakeRenderSafetyLadderDashboard` in `static/boot.js`. The dashboard is client-side only: status header, progress meter, stat cards, next critical step, critical path cards, full artifact grid, and mutation-truthfulness note. It does not add any endpoint or external mutation.

@@ -1697,6 +1697,32 @@ async function loadResearchIntakePromotionCompletionSummary(){
     return null;
   }
 }
+function _researchIntakeRenderSafetyLadderDashboard(data){
+  const summary=data.summary||{};
+  const steps=data.steps||[];
+  const next=summary.next_incomplete_step;
+  const completed=Number(summary.completed_steps||0);
+  const total=Number(summary.total_steps||steps.length||0);
+  const percent=total?Math.round((completed/total)*100):0;
+  const criticalCompleted=Number(summary.critical_completed_steps||0);
+  const criticalTotal=Number(summary.critical_steps||0);
+  const criticalSteps=steps.filter(s=>s.critical);
+  const otherSteps=steps.filter(s=>!s.critical);
+  const stepCard=s=>`<div class="research-intake-progress-step ${esc(s.state||'missing')}"><div><span class="research-intake-progress-order">${esc(s.order||'')}</span><strong>${esc(s.label||s.id||'step')}</strong></div><small>${esc(s.id||'')} · ${esc(s.artifact||'')}</small><em>${esc(s.state||'missing')}${s.actual_status?' · '+esc(s.actual_status):''}</em></div>`;
+  return `<div class="research-intake-progress-dashboard" data-dashboard="progress tracker dashboard">
+    <div class="research-intake-progress-head"><strong>Safety ladder dashboard</strong><span>${esc(data.status||'safety_ladder_in_progress')}</span></div>
+    <div class="research-intake-progress-meter"><span style="width:${Math.max(0,Math.min(100,percent))}%"></span></div>
+    <div class="research-intake-progress-stats">
+      <div class="research-intake-progress-stat"><b>${completed}/${total}</b><span>전체 단계</span></div>
+      <div class="research-intake-progress-stat"><b>${criticalCompleted}/${criticalTotal}</b><span>Critical</span></div>
+      <div class="research-intake-progress-stat"><b>${summary.critical_complete===true?'완료':'진행 중'}</b><span>완료 판정</span></div>
+    </div>
+    <div class="research-intake-progress-critical"><strong>Next critical step</strong><span>${next?esc(next.id||next.label||'unknown'):'none'}</span></div>
+    <div class="research-intake-progress-section"><h4>Critical path</h4><div class="research-intake-progress-grid">${criticalSteps.map(stepCard).join('')}</div></div>
+    <div class="research-intake-progress-section"><h4>All artifacts</h4><div class="research-intake-progress-grid compact">${otherSteps.map(stepCard).join('')}</div></div>
+    <div class="research-intake-progress-note">OpenCrab sync / Neo4j write / Paperclip reflection: not executed by progress tracker</div>
+  </div>`;
+}
 async function loadResearchIntakeSafetyLadderProgress(){
   const packageId=_researchIntakeCurrentPackage;
   if(!packageId){_researchIntakeSetResult('먼저 safety ladder 대상 package를 선택하세요.', true);return null;}
@@ -1709,10 +1735,7 @@ async function loadResearchIntakeSafetyLadderProgress(){
     if(!res.ok) throw new Error(data.error||'safety ladder progress failed');
     const panel=$('researchIntakeReviewPanel');
     const next=data.summary&&data.summary.next_incomplete_step;
-    const rows=(data.steps||[]).map(s=>`${s.order}. ${s.state==='complete'?'✅':s.state==='present_needs_review'?'⚠️':'⬜'} ${s.label} [${s.id}]${s.critical?' *critical':''}\n   artifact: ${s.artifact}\n   state: ${s.state}${s.actual_status?' / status: '+s.actual_status:''}`).join('\n');
-    if(panel){
-      panel.innerHTML=`<div class="research-intake-final-report"><strong>Safety ladder progress</strong><div>${esc(data.status||'safety_ladder_in_progress')}</div><pre>${esc(`Completed: ${(data.summary||{}).completed_steps}/${(data.summary||{}).total_steps}\nCritical complete: ${(data.summary||{}).critical_complete}\nNext incomplete step: ${next?next.id:'none'}\n\n${rows}\n\nMutation truthfulness:\nOpenCrab sync: not executed by progress tracker\nNeo4j write: not executed by progress tracker\nPaperclip reflection: not executed by progress tracker`)}</pre></div>`;
-    }
+    if(panel){ panel.innerHTML=_researchIntakeRenderSafetyLadderDashboard(data); }
     _researchIntakeSetResult(data.status==='safety_ladder_completed'?'safety_ladder_completed · 필수 검증/export 단계 완료':'safety ladder 진행 중 · next_incomplete_step: '+(next?next.id:'unknown'), false);
     return data;
   }catch(e){

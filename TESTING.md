@@ -1865,3 +1865,7 @@ Covered in `tests/test_research_intake_webui.py`: route registration, verified-s
 ### Research Intake safety ladder progress tests
 
 Covered in `tests/test_research_intake_webui.py`: route registration, read-only progress state with a missing Paperclip verification, completed state when final verification/export artifacts exist, and WebUI button/function wiring. Smoke tests should seed selected promotion artifacts, call `/api/research-intake/safety-ladder-progress`, confirm `next_incomplete_step`, and confirm all returned mutation flags are false.
+
+### Research Intake safety ladder dashboard UI tests
+
+Covered in `tests/test_research_intake_webui.py`: dashboard renderer token checks and CSS class checks for stats cards, critical section, step grid, and state-specific step styles. Browser smoke should switch to OpenCrab, confirm `loadResearchIntakeSafetyLadderProgress` renders `research-intake-progress-dashboard`, and check the console has no JavaScript errors.

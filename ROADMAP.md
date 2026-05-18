@@ -469,3 +469,7 @@ Completed: added a local-only completion summary export for `completion_summary.
 ### Research Intake safety ladder progress tracker
 
 Completed: added a read-only progress tracker for the Research Intake safety ladder. It gives operators a one-screen view of artifact progress and the next incomplete critical step without triggering OpenCrab, Neo4j, or Paperclip mutations. Remaining work is optional UX polish only.
+
+### Research Intake safety ladder dashboard UI
+
+Completed: upgraded the progress tracker from a preformatted text block to a visual read-only dashboard with summary cards, critical-path highlighting, grouped artifact grid, and explicit mutation truthfulness. Remaining optional UX polish: filtering, collapse/expand groups, or package list/search integration.
