@@ -521,6 +521,9 @@ def handle_post(handler, parsed) -> bool:
     if parsed.path == '/api/research-intake/paperclip-reflection-execution-gate':
         return _handle_research_intake_paperclip_reflection_execution_gate(handler, body)
 
+    if parsed.path == '/api/research-intake/paperclip-reflection-live-runner':
+        return _handle_research_intake_paperclip_reflection_live_runner(handler, body)
+
     # ── Workspace management (POST) ──
     if parsed.path == '/api/workspaces/add':
         return _handle_workspace_add(handler, body)
@@ -2180,6 +2183,154 @@ def _handle_research_intake_paperclip_reflection_execution_gate(handler, body):
             'next_approval_required': gate['next_approval_required'],
             'external_mutations': mutations,
         }, status=200 if flag_enabled else 423)
+    except FileNotFoundError as e:
+        return bad(handler, str(e), 404)
+    except (ValueError, PermissionError, OSError, json.JSONDecodeError) as e:
+        return bad(handler, str(e), 400)
+    except Exception as e:
+        return bad(handler, str(e), 500)
+
+
+def _invoke_paperclip_reflection_live_runner(request_payload):
+    runner_url = (os.environ.get('HERMES_PAPERCLIP_REFLECTION_RUNNER_URL') or '').strip()
+    if not runner_url:
+        raise RuntimeError('HERMES_PAPERCLIP_REFLECTION_RUNNER_URL is required for Paperclip reflection live runner invocation')
+    data = json.dumps(request_payload, ensure_ascii=False).encode('utf-8')
+    req = urllib.request.Request(runner_url, data=data, headers={'Content-Type': 'application/json'}, method='POST')
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return json.loads(resp.read().decode('utf-8') or '{}')
+
+
+def _write_paperclip_reflection_live_runner_failure_artifact(promotion_dir, *, package_id, payload_sha256, request_payload, error, mutations):
+    failure = {
+        'package_id': package_id,
+        'status': 'paperclip_reflection_live_runner_failed',
+        'created_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+        'payload_sha256': payload_sha256,
+        'request': request_payload,
+        'failure_type': _classify_opencrab_live_runner_failure(error),
+        'error': str(error),
+        'external_mutations': mutations,
+        'external_mutations_performed': ['opencrab_sync', 'neo4j_write'],
+        'retry_guard': {
+            'retry_required': True,
+            'retry_requires_same_payload_sha256': payload_sha256,
+            'retry_requires_approval_phrase': 'EXECUTE_PAPERCLIP_REFLECTION_LIVE_RUNNER',
+            'retry_default': 'blocked',
+        },
+        'guards': {
+            'paperclip_reflection_executed': False,
+            'paperclip_reflection_verified': False,
+        },
+    }
+    failure_path = promotion_dir / 'paperclip_reflection_live_runner_failure.json'
+    report_path = promotion_dir / 'paperclip_reflection_live_runner_failure.md'
+    failure_path.write_text(json.dumps(failure, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+    report_path.write_text('\n'.join([
+        '# Paperclip Reflection Live Runner Failure', '',
+        f"Package: {package_id}",
+        f"Status: {failure['status']}",
+        f"Payload SHA-256: {payload_sha256}",
+        '', '## Mutations',
+        '- OpenCrab sync: already executed upstream',
+        '- Neo4j write: already executed/verified upstream',
+        '- Paperclip reflection: not executed',
+        '', '## Retry guard', '- retry_required: true', '- retry_default: blocked',
+    ]) + '\n', encoding='utf-8')
+    return failure, failure_path, report_path
+
+
+def _write_paperclip_reflection_success_verification(promotion_dir, *, package_id, payload_sha256, request_payload, runner_result, mutations):
+    request_counts = request_payload.get('counts') or {}
+    reflected_counts = runner_result.get('reflected_counts') or {}
+    checks = {
+        'status_completed': runner_result.get('status') == 'paperclip_reflection_completed',
+        'payload_sha256_match': runner_result.get('payload_sha256') == payload_sha256,
+        'reflected_counts_match_request': reflected_counts == request_counts,
+        'paperclip_reflection_id_present': bool(runner_result.get('paperclip_reflection_id')),
+    }
+    verified = all(checks.values())
+    verification = {
+        'package_id': package_id,
+        'status': 'paperclip_reflection_success_verified' if verified else 'paperclip_reflection_success_verification_failed',
+        'created_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+        'payload_sha256': payload_sha256,
+        'paperclip_reflection_id': runner_result.get('paperclip_reflection_id'),
+        'request_counts': request_counts,
+        'reflected_counts': reflected_counts,
+        'checks': checks,
+        'external_mutations': mutations,
+        'external_mutations_performed': ['opencrab_sync', 'neo4j_write', 'paperclip_reflection'] if verified else ['opencrab_sync', 'neo4j_write'],
+    }
+    verification_path = promotion_dir / 'paperclip_reflection_success_verification.json'
+    report_path = promotion_dir / 'paperclip_reflection_success_verification.md'
+    verification_path.write_text(json.dumps(verification, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+    report_path.write_text('\n'.join([
+        '# Paperclip Reflection Success Verification', '',
+        f"Package: {package_id}",
+        f"Status: {verification['status']}",
+        f"Payload SHA-256: {payload_sha256}",
+        f"Paperclip reflection id: {verification.get('paperclip_reflection_id') or ''}",
+        '', '## Checks',
+        f"- status_completed: {checks['status_completed']}",
+        f"- payload_sha256_match: {checks['payload_sha256_match']}",
+        f"- reflected_counts_match_request: {checks['reflected_counts_match_request']}",
+        f"- paperclip_reflection_id_present: {checks['paperclip_reflection_id_present']}",
+    ]) + '\n', encoding='utf-8')
+    return verification, verification_path, report_path
+
+
+def _handle_research_intake_paperclip_reflection_live_runner(handler, body):
+    base_mutations = {'opencrab_sync': True, 'neo4j_write': True, 'paperclip_reflection': False}
+    success_mutations = {'opencrab_sync': True, 'neo4j_write': True, 'paperclip_reflection': True}
+    feature_flag = 'HERMES_PAPERCLIP_ENABLE_REFLECTION_RUNNER'
+    try:
+        package_dir = _safe_research_intake_package_dir(str(body.get('package_id') or body.get('package_dir') or ''))
+        promotion_dir = package_dir / 'promotion'
+        gate_path = promotion_dir / 'paperclip_reflection_execution_gate.json'
+        if not gate_path.exists():
+            return j(handler, {'ok': False, 'status': 'paperclip_reflection_live_runner_blocked', 'error': 'paperclip_reflection_execution_gate.json is required', 'external_mutations': base_mutations}, status=409)
+        gate = json.loads(gate_path.read_text(encoding='utf-8'))
+        if gate.get('status') != 'paperclip_reflection_execution_gate_ready':
+            return j(handler, {'ok': False, 'status': 'paperclip_reflection_live_runner_blocked', 'error': 'Paperclip reflection execution gate must be ready', 'gate_status': gate.get('status'), 'external_mutations': base_mutations}, status=409)
+        if str(os.environ.get(feature_flag) or '').lower() not in ('1', 'true', 'yes', 'on'):
+            return j(handler, {'ok': False, 'status': 'paperclip_reflection_live_runner_locked', 'feature_flag': feature_flag, 'feature_flag_enabled': False, 'external_mutations': base_mutations}, status=423)
+        payload_sha = str(gate.get('payload_sha256') or '').strip()
+        expected_sha = str(body.get('expected_payload_sha256') or '').strip()
+        if expected_sha and expected_sha != payload_sha:
+            return j(handler, {'ok': False, 'status': 'paperclip_reflection_live_runner_blocked', 'error': 'payload checksum mismatch', 'expected_payload_sha256': expected_sha, 'payload_sha256': payload_sha, 'external_mutations': base_mutations}, status=409)
+        required_phrase = 'EXECUTE_PAPERCLIP_REFLECTION_LIVE_RUNNER'
+        if str(body.get('approval_phrase') or '').strip() != required_phrase:
+            return j(handler, {'ok': False, 'status': 'paperclip_reflection_live_runner_blocked', 'error': f'approval phrase must be {required_phrase}', 'external_mutations': base_mutations}, status=403)
+        request_payload = dict(gate.get('would_request') or {})
+        request_payload['operator'] = str(body.get('operator') or request_payload.get('operator') or 'webui-user')
+        failure_path = promotion_dir / 'paperclip_reflection_live_runner_failure.json'
+        if failure_path.exists() and not bool(body.get('retry')):
+            failure = json.loads(failure_path.read_text(encoding='utf-8'))
+            return j(handler, {'ok': False, 'status': 'paperclip_reflection_live_runner_retry_blocked', 'payload_sha256': payload_sha, 'retry_guard': failure.get('retry_guard') or {}, 'external_mutations': base_mutations}, status=409)
+        try:
+            runner_result = _invoke_paperclip_reflection_live_runner(request_payload)
+        except Exception as e:
+            failure, failure_path, report_path = _write_paperclip_reflection_live_runner_failure_artifact(promotion_dir, package_id=package_dir.name, payload_sha256=payload_sha, request_payload=request_payload, error=e, mutations=base_mutations)
+            return j(handler, {'ok': False, 'status': failure['status'], 'payload_sha256': payload_sha, 'failure_type': failure['failure_type'], 'failure_path': str(failure_path), 'report_path': str(report_path), 'retry_guard': failure['retry_guard'], 'external_mutations': base_mutations}, status=502)
+        result = {
+            'package_id': package_dir.name,
+            'status': runner_result.get('status') or 'paperclip_reflection_completed',
+            'created_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+            'payload_sha256': payload_sha,
+            'request': request_payload,
+            'runner_result': runner_result,
+            'paperclip_reflection_id': runner_result.get('paperclip_reflection_id'),
+            'external_mutations': success_mutations,
+            'external_mutations_performed': ['opencrab_sync', 'neo4j_write', 'paperclip_reflection'],
+        }
+        result_path = promotion_dir / 'paperclip_reflection_live_runner_result.json'
+        report_path = promotion_dir / 'paperclip_reflection_live_runner_result.md'
+        result_path.write_text(json.dumps(result, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+        report_path.write_text('\n'.join(['# Paperclip Reflection Live Runner Result', '', f"Package: {package_dir.name}", f"Status: {result['status']}", f"Payload SHA-256: {payload_sha}", f"Paperclip reflection id: {result.get('paperclip_reflection_id') or ''}"]) + '\n', encoding='utf-8')
+        verification, verification_path, verification_report_path = _write_paperclip_reflection_success_verification(promotion_dir, package_id=package_dir.name, payload_sha256=payload_sha, request_payload=request_payload, runner_result=runner_result, mutations=success_mutations)
+        http_status = 200 if verification['status'] == 'paperclip_reflection_success_verified' else 502
+        return j(handler, {'ok': http_status == 200, 'package_id': package_dir.name, 'package_dir': str(package_dir), 'status': result['status'], 'payload_sha256': payload_sha, 'paperclip_reflection_id': runner_result.get('paperclip_reflection_id'), 'runner_result': runner_result, 'result_path': str(result_path), 'report_path': str(report_path), 'success_verification': verification, 'verification_path': str(verification_path), 'verification_report_path': str(verification_report_path), 'external_mutations': success_mutations if http_status == 200 else base_mutations}, status=http_status)
     except FileNotFoundError as e:
         return bad(handler, str(e), 404)
     except (ValueError, PermissionError, OSError, json.JSONDecodeError) as e:

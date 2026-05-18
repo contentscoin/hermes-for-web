@@ -1112,6 +1112,8 @@ function _researchIntakeSetApprovalEnabled(enabled){
   if(paperclipReflectionStubBtn) paperclipReflectionStubBtn.disabled=!enabled;
   const paperclipReflectionExecutionGateBtn=$('researchIntakePaperclipReflectionExecutionGate');
   if(paperclipReflectionExecutionGateBtn) paperclipReflectionExecutionGateBtn.disabled=!enabled;
+  const paperclipReflectionLiveRunnerBtn=$('researchIntakePaperclipReflectionLiveRunner');
+  if(paperclipReflectionLiveRunnerBtn) paperclipReflectionLiveRunnerBtn.disabled=!enabled;
 }
 function _researchIntakeRenderReview(data){
   const panel=$('researchIntakeReviewPanel');
@@ -1638,6 +1640,33 @@ async function createResearchIntakePaperclipReflectionExecutionGate(){
     return null;
   }
 }
+async function runResearchIntakePaperclipReflectionLiveRunner(){
+  const packageId=_researchIntakeCurrentPackage;
+  if(!packageId){_researchIntakeSetResult('먼저 Paperclip reflection execution gate를 생성하세요.', true);return null;}
+  _researchIntakeSetResult('Paperclip reflection live runner 실행 중... 실패 시 failure artifact와 retry guard를 남깁니다.', false);
+  try{
+    const res=await fetch(new URL('/api/research-intake/paperclip-reflection-live-runner',location.origin).href,{
+      method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+        package_id:packageId,
+        approval_phrase:'EXECUTE_PAPERCLIP_REFLECTION_LIVE_RUNNER',
+        operator:'webui-user'
+      })
+    });
+    const data=await res.json();
+    if(!res.ok&&res.status!==403&&res.status!==409&&res.status!==423&&res.status!==502) throw new Error(data.error||'paperclip_reflection_live_runner failed');
+    const panel=$('researchIntakeReviewPanel');
+    if(panel){
+      const verification=data.success_verification||{};
+      const checks=verification.checks||{};
+      panel.innerHTML=`<div class="research-intake-final-report"><strong>Paperclip reflection live runner</strong><div>${esc(data.status||'paperclip_reflection_live_runner_failed')}</div><pre>${esc(`Approval phrase: EXECUTE_PAPERCLIP_REFLECTION_LIVE_RUNNER\nPayload SHA-256: ${data.payload_sha256||''}\nResult artifact: paperclip_reflection_live_runner_result\nFailure artifact: paperclip_reflection_live_runner_failure\nSuccess verification: paperclip_reflection_success_verification\nPaperclip reflection id: ${data.paperclip_reflection_id||''}\n\nChecks:\nStatus completed: ${checks.status_completed===true}\nPayload check: ${checks.payload_sha256_match===true}\nCounts check: ${checks.reflected_counts_match_request===true}\nPaperclip reflection id present: ${checks.paperclip_reflection_id_present===true}\n\nMutations:\nOpenCrab sync: ${data.external_mutations&&data.external_mutations.opencrab_sync?'already executed':'not executed'}\nNeo4j write: ${data.external_mutations&&data.external_mutations.neo4j_write?'already executed/verified':'not executed'}\nPaperclip reflection: ${data.external_mutations&&data.external_mutations.paperclip_reflection?'executed/confirmed':'not executed'}`)}</pre></div>`;
+    }
+    _researchIntakeSetResult(data.status==='paperclip_reflection_completed'?'Paperclip reflection live runner 완료 · success verification 생성':'Paperclip reflection live runner blocked/failed · artifact와 retry guard 확인', data.status!=='paperclip_reflection_completed');
+    return data;
+  }catch(e){
+    _researchIntakeSetResult('Paperclip reflection live runner 실패: '+(e.message||e), true);
+    return null;
+  }
+}
 async function createResearchIntakeFinalApprovalPrompt(){
   const packageId=_researchIntakeCurrentPackage;
   if(!packageId){_researchIntakeSetResult('먼저 최종 실행 decision report를 생성하세요.', true);return null;}
@@ -1705,5 +1734,6 @@ window.runResearchIntakeNeo4jWriteLiveRunner=runResearchIntakeNeo4jWriteLiveRunn
 window.createResearchIntakePaperclipReflectionApprovalGate=createResearchIntakePaperclipReflectionApprovalGate;
 window.runResearchIntakePaperclipReflectionRunnerStub=runResearchIntakePaperclipReflectionRunnerStub;
 window.createResearchIntakePaperclipReflectionExecutionGate=createResearchIntakePaperclipReflectionExecutionGate;
+window.runResearchIntakePaperclipReflectionLiveRunner=runResearchIntakePaperclipReflectionLiveRunner;
 window.createResearchIntakeFinalApprovalPrompt=createResearchIntakeFinalApprovalPrompt;
 window.createResearchIntakeExecutionPlan=createResearchIntakeExecutionPlan;
