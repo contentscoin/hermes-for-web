@@ -461,3 +461,7 @@ Completed: added Paperclip reflection live runner invocation with failure artifa
 ### Research Intake promotion completion summary
 
 Completed: added a read-only final dashboard endpoint and WebUI control that summarizes OpenCrab, Neo4j, and Paperclip success verification artifacts without creating any new mutation. Next step: optionally add export/share affordances for the completion summary, but keep them read-only unless separately approved.
+
+### Research Intake completion summary export
+
+Completed: added a local-only completion summary export for `completion_summary.json` and `completion_summary.md`. Remaining optional work is polish-only: add download/open-file affordances or a consolidated Research Intake dashboard; no further mutation steps are required for this safety ladder.

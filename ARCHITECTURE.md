@@ -1712,3 +1712,7 @@ After a connector reports `opencrab_sync_completed`, the live runner writes `pro
 ### Research Intake promotion completion summary
 
 `POST /api/research-intake/promotion-completion-summary` is a read-only operator summary. It reads `promotion/opencrab_live_runner_success_verification.json`, `promotion/neo4j_write_success_verification.json`, and `promotion/paperclip_reflection_success_verification.json`; verifies expected statuses, all nested checks, payload SHA-256 consistency, and count consistency; and returns `promotion_completed_verified` only when every verification artifact agrees. It performs no OpenCrab sync, Neo4j write, or Paperclip reflection and reports all `external_mutations` as false for the summary call.
+
+### Research Intake completion summary export
+
+`POST /api/research-intake/promotion-completion-summary-export` writes local operator artifacts only after `/api/research-intake/promotion-completion-summary` reports `promotion_completed_verified`. It creates `promotion/completion_summary.json` and `promotion/completion_summary.md`, preserving the read-only summary and explicitly reporting no OpenCrab sync, Neo4j write, or Paperclip reflection during export. Incomplete summaries return HTTP 409 and write nothing.

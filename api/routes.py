@@ -3,6 +3,7 @@ Hermes Web UI -- Route handlers for GET and POST endpoints.
 Extracted from server.py (Sprint 11) so server.py is a thin shell.
 """
 import hashlib
+import io
 import json
 import os
 import queue
@@ -526,6 +527,9 @@ def handle_post(handler, parsed) -> bool:
 
     if parsed.path == '/api/research-intake/promotion-completion-summary':
         return _handle_research_intake_promotion_completion_summary(handler, body)
+
+    if parsed.path == '/api/research-intake/promotion-completion-summary-export':
+        return _handle_research_intake_promotion_completion_summary_export(handler, body)
 
     # ── Workspace management (POST) ──
     if parsed.path == '/api/workspaces/add':
@@ -2346,6 +2350,21 @@ def _completion_stage_verified(data, expected_status):
     return bool(data) and data.get('status') == expected_status and all((data.get('checks') or {}).values())
 
 
+class _JsonCaptureHandler:
+    def __init__(self):
+        self.status = None
+        self.headers = []
+        self.wfile = io.BytesIO()
+    def send_response(self, status):
+        self.status = status
+    def send_header(self, key, value):
+        self.headers.append((key, value))
+    def end_headers(self):
+        pass
+    def json_payload(self):
+        return json.loads(self.wfile.getvalue().decode('utf-8') or '{}')
+
+
 def _counts_from_verification(data):
     if not data:
         return None
@@ -2411,6 +2430,78 @@ def _handle_research_intake_promotion_completion_summary(handler, body):
             'note': 'This endpoint only reads verification artifacts and performs no OpenCrab sync, Neo4j write, or Paperclip reflection.',
         }
         return j(handler, summary, status=200)
+    except FileNotFoundError as e:
+        return bad(handler, str(e), 404)
+    except (ValueError, PermissionError, OSError, json.JSONDecodeError) as e:
+        return bad(handler, str(e), 400)
+    except Exception as e:
+        return bad(handler, str(e), 500)
+
+
+def _handle_research_intake_promotion_completion_summary_export(handler, body):
+    external_mutations = {'opencrab_sync': False, 'neo4j_write': False, 'paperclip_reflection': False}
+    try:
+        capture = _JsonCaptureHandler()
+        _handle_research_intake_promotion_completion_summary(capture, body)
+        summary = capture.json_payload()
+        package_dir = _safe_research_intake_package_dir(str(body.get('package_id') or body.get('package_dir') or ''))
+        promotion_dir = package_dir / 'promotion'
+        if not summary.get('complete'):
+            return j(handler, {
+                'ok': False,
+                'status': 'completion_summary_export_blocked',
+                'summary_status': summary.get('status'),
+                'summary': summary,
+                'external_mutations': external_mutations,
+                'error': 'completion summary must be verified before export',
+            }, status=409)
+        export = {
+            'operator': str(body.get('operator') or 'webui-user'),
+            'created_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+            'kind': 'research_intake_completion_summary_export',
+            'read_only_export': True,
+            'external_mutations': external_mutations,
+        }
+        payload = {'export': export, 'summary': summary}
+        json_path = promotion_dir / 'completion_summary.json'
+        md_path = promotion_dir / 'completion_summary.md'
+        json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+        ids = summary.get('ids') or {}
+        checks = summary.get('checks') or {}
+        counts = summary.get('counts') or {}
+        md_path.write_text('\n'.join([
+            '# Research Intake Completion Summary', '',
+            f"Package: {summary.get('package_id')}",
+            f"Status: {summary.get('status')}",
+            f"Complete: {summary.get('complete')}",
+            f"Payload SHA-256: {summary.get('payload_sha256') or ''}",
+            f"Counts: {json.dumps(counts, ensure_ascii=False, sort_keys=True)}", '',
+            '## Result IDs',
+            f"- OpenCrab result id: {ids.get('opencrab_result_id') or ''}",
+            f"- Neo4j result id: {ids.get('neo4j_result_id') or ''}",
+            f"- Paperclip reflection id: {ids.get('paperclip_reflection_id') or ''}", '',
+            '## Checks',
+            f"- all_verifications_present: {checks.get('all_verifications_present')}",
+            f"- opencrab_verified: {checks.get('opencrab_verified')}",
+            f"- neo4j_verified: {checks.get('neo4j_verified')}",
+            f"- paperclip_verified: {checks.get('paperclip_verified')}",
+            f"- payload_sha256_consistent: {checks.get('payload_sha256_consistent')}",
+            f"- counts_consistent: {checks.get('counts_consistent')}", '',
+            '## Export mutation truthfulness',
+            '- OpenCrab sync: not executed by export',
+            '- Neo4j write: not executed by export',
+            '- Paperclip reflection: not executed by export',
+        ]) + '\n', encoding='utf-8')
+        return j(handler, {
+            'ok': True,
+            'status': 'completion_summary_exported',
+            'summary_status': summary.get('status'),
+            'package_id': package_dir.name,
+            'json_path': str(json_path),
+            'md_path': str(md_path),
+            'summary': summary,
+            'external_mutations': external_mutations,
+        }, status=200)
     except FileNotFoundError as e:
         return bad(handler, str(e), 404)
     except (ValueError, PermissionError, OSError, json.JSONDecodeError) as e:

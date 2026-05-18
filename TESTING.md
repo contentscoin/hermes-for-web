@@ -1857,3 +1857,7 @@ Covered in `tests/test_research_intake_webui.py`: route registration, missing ex
 ### Research Intake promotion completion summary tests
 
 Covered in `tests/test_research_intake_webui.py`: route registration, missing verification artifacts, complete verified summary, checksum mismatch detection, and WebUI button/function wiring. Smoke tests should seed the three success verification artifacts in an isolated state dir and call `/api/research-intake/promotion-completion-summary`; the endpoint must remain read-only with all returned mutation flags false.
+
+### Research Intake completion summary export tests
+
+Covered in `tests/test_research_intake_webui.py`: route registration, verified-summary export to local JSON/MD artifacts, incomplete-summary blocking with HTTP 409, and WebUI button/function wiring. Smoke tests should seed the three success verification artifacts, call `/api/research-intake/promotion-completion-summary-export`, confirm `completion_summary.json/md` exist, and confirm returned mutation flags are all false.

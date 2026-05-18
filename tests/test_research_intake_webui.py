@@ -36,6 +36,7 @@ def test_research_intake_routes_are_registered():
     assert "/api/research-intake/paperclip-reflection-execution-gate" in routes
     assert "/api/research-intake/paperclip-reflection-live-runner" in routes
     assert "/api/research-intake/promotion-completion-summary" in routes
+    assert "/api/research-intake/promotion-completion-summary-export" in routes
     assert "_handle_research_intake_image_draft" in routes
     assert "_handle_research_intake_review" in routes
 
@@ -2234,6 +2235,56 @@ def test_research_intake_promotion_completion_summary_ui_controls_exist():
     assert "/api/research-intake/promotion-completion-summary" in boot
     assert "promotion_completed_verified" in boot
     assert "payload_sha256_consistent" in boot
+
+
+def test_research_intake_promotion_completion_summary_export_writes_local_artifacts_only(tmp_path, monkeypatch):
+    import api.routes as routes
+
+    package_dir = _prepare_opencrab_execution_package(tmp_path)
+    monkeypatch.setattr(routes, "STATE_DIR", tmp_path)
+    _write_completion_summary_verifications(package_dir)
+    handler = DummyHandler()
+    routes._handle_research_intake_promotion_completion_summary_export(handler, {"package_id": "research-intake-test-package", "operator": "test-user"})
+
+    payload = handler.json_payload()
+    promotion_dir = package_dir / "promotion"
+    assert handler.status == 200
+    assert payload["status"] == "completion_summary_exported"
+    assert payload["summary_status"] == "promotion_completed_verified"
+    assert payload["external_mutations"] == {"opencrab_sync": False, "neo4j_write": False, "paperclip_reflection": False}
+    assert (promotion_dir / "completion_summary.json").exists()
+    assert (promotion_dir / "completion_summary.md").exists()
+    saved = json.loads((promotion_dir / "completion_summary.json").read_text(encoding="utf-8"))
+    assert saved["summary"]["complete"] is True
+    assert saved["export"]["operator"] == "test-user"
+    report = (promotion_dir / "completion_summary.md").read_text(encoding="utf-8")
+    assert "# Research Intake Completion Summary" in report
+    assert "Paperclip reflection: not executed by export" in report
+
+
+def test_research_intake_promotion_completion_summary_export_blocks_incomplete(tmp_path, monkeypatch):
+    import api.routes as routes
+
+    _prepare_opencrab_execution_package(tmp_path)
+    monkeypatch.setattr(routes, "STATE_DIR", tmp_path)
+    handler = DummyHandler()
+    routes._handle_research_intake_promotion_completion_summary_export(handler, {"package_id": "research-intake-test-package"})
+
+    payload = handler.json_payload()
+    assert handler.status == 409
+    assert payload["status"] == "completion_summary_export_blocked"
+    assert payload["summary_status"] == "promotion_completion_incomplete"
+    assert payload["external_mutations"] == {"opencrab_sync": False, "neo4j_write": False, "paperclip_reflection": False}
+
+
+def test_research_intake_promotion_completion_summary_export_ui_controls_exist():
+    html = read("static/index.html")
+    boot = read("static/boot.js")
+    assert "researchIntakePromotionCompletionSummaryExport" in html
+    assert "function exportResearchIntakePromotionCompletionSummary" in boot
+    assert "/api/research-intake/promotion-completion-summary-export" in boot
+    assert "completion_summary.md" in boot
+    assert "completion_summary.json" in boot
 
 
 def test_research_intake_paperclip_opencrab_live_runner_health_reports_missing_url_without_mutation(monkeypatch):

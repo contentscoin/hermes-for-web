@@ -1116,6 +1116,8 @@ function _researchIntakeSetApprovalEnabled(enabled){
   if(paperclipReflectionLiveRunnerBtn) paperclipReflectionLiveRunnerBtn.disabled=!enabled;
   const completionSummaryBtn=$('researchIntakePromotionCompletionSummary');
   if(completionSummaryBtn) completionSummaryBtn.disabled=!enabled;
+  const completionSummaryExportBtn=$('researchIntakePromotionCompletionSummaryExport');
+  if(completionSummaryExportBtn) completionSummaryExportBtn.disabled=!enabled;
 }
 function _researchIntakeRenderReview(data){
   const panel=$('researchIntakeReviewPanel');
@@ -1693,6 +1695,27 @@ async function loadResearchIntakePromotionCompletionSummary(){
     return null;
   }
 }
+async function exportResearchIntakePromotionCompletionSummary(){
+  const packageId=_researchIntakeCurrentPackage;
+  if(!packageId){_researchIntakeSetResult('먼저 completion summary 대상 package를 선택하세요.', true);return null;}
+  _researchIntakeSetResult('completion summary local artifact 저장 중... 외부 mutation은 하지 않습니다.', false);
+  try{
+    const res=await fetch(new URL('/api/research-intake/promotion-completion-summary-export',location.origin).href,{
+      method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({package_id:packageId,operator:'webui-user'})
+    });
+    const data=await res.json();
+    if(!res.ok&&res.status!==409) throw new Error(data.error||'completion summary export failed');
+    const panel=$('researchIntakeReviewPanel');
+    if(panel){
+      panel.innerHTML=`<div class="research-intake-final-report"><strong>Completion summary export</strong><div>${esc(data.status||'completion_summary_export_blocked')}</div><pre>${esc(`Summary status: ${data.summary_status||''}\nJSON artifact: ${data.json_path||'completion_summary.json'}\nMarkdown artifact: ${data.md_path||'completion_summary.md'}\n\nExport mutation truthfulness:\nOpenCrab sync: not executed by export\nNeo4j write: not executed by export\nPaperclip reflection: not executed by export`)}</pre></div>`;
+    }
+    _researchIntakeSetResult(data.status==='completion_summary_exported'?'completion_summary.md / completion_summary.json 저장 완료':'completion summary export 차단 · 먼저 verified summary가 필요합니다', data.status!=='completion_summary_exported');
+    return data;
+  }catch(e){
+    _researchIntakeSetResult('completion summary export 실패: '+(e.message||e), true);
+    return null;
+  }
+}
 async function createResearchIntakeFinalApprovalPrompt(){
   const packageId=_researchIntakeCurrentPackage;
   if(!packageId){_researchIntakeSetResult('먼저 최종 실행 decision report를 생성하세요.', true);return null;}
@@ -1762,5 +1785,6 @@ window.runResearchIntakePaperclipReflectionRunnerStub=runResearchIntakePaperclip
 window.createResearchIntakePaperclipReflectionExecutionGate=createResearchIntakePaperclipReflectionExecutionGate;
 window.runResearchIntakePaperclipReflectionLiveRunner=runResearchIntakePaperclipReflectionLiveRunner;
 window.loadResearchIntakePromotionCompletionSummary=loadResearchIntakePromotionCompletionSummary;
+window.exportResearchIntakePromotionCompletionSummary=exportResearchIntakePromotionCompletionSummary;
 window.createResearchIntakeFinalApprovalPrompt=createResearchIntakeFinalApprovalPrompt;
 window.createResearchIntakeExecutionPlan=createResearchIntakeExecutionPlan;
